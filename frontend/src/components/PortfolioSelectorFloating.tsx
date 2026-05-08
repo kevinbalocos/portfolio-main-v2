@@ -28,7 +28,7 @@ type PortfolioSelectorFloatingProps = {
 const defaultItems: PortfolioNode[] = [
   {
     title: "Piesway v1",
-    role: "Full-Stack / Client Work",
+    role: "Full-Stack /Client Work",
     category: "Production World",
     description:
       "A polished portfolio space for real-world systems, client builds, and professional delivery.",
