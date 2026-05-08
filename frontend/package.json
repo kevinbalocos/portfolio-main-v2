@@ -56,5 +56,11 @@
   },
   "engines": {
     "node": "20.x"
+  },
+  "dependencies": {
+    "camera-controls": "^2.0.0"
+  },
+  "overrides": {
+    "camera-controls": "^2.0.0"
   }
 }
