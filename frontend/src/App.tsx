@@ -104,7 +104,7 @@ export function App() {
 
   return (
     <>
-      <div className="pointer-events-none fixed left-4 bottom-4 z-[70] max-w-[calc(100vw-2rem)] rounded-full border border-border/70 bg-background/80 px-3 py-2 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase shadow-[0_16px_50px_-30px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+      <div className="pointer-events-none fixed  left-4 bottom-4 z-[70] max-w-[calc(100vw-2rem)] rounded-full border border-border/70 bg-background/80 px-3 py-2 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase shadow-[0_16px_50px_-30px_rgba(0,0,0,0.55)] backdrop-blur-xl">
         {themeHint}
       </div>
 
