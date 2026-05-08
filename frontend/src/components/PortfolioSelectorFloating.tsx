@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import { ArrowUpRight, Sparkles, X, Orbit, ExternalLink } from "lucide-react"
 import { useTheme } from "@/components/theme-provider"
 import kevsPicLight from "@/assets/KEVS-PIC.jpg?url"
-import kevsPicDark from "@/assets/KEVS-PIC-dark.jpg?url"
+import kevsPicDark from "@/assets/KEVS-PIC-DARK.jpg?url"
 
 export type PortfolioNode = {
   title: string

@@ -48,7 +48,7 @@ import {
   Filter,
 } from "lucide-react"
 import kevsPicLight from "@/assets/KEVS-PIC.jpg?url"
-import kevsPicDark from "@/assets/KEVS-PIC-dark.jpg?url"
+import kevsPicDark from "@/assets/KEVS-PIC-DARK.jpg?url"
 import liquidForm from "@/assets/LIQUID-FORM.png?url"
 import PortfolioSelectorFloating from "@/components/PortfolioSelectorFloating"
 
