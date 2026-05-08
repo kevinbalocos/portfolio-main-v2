@@ -2,10 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { ArrowUpRight, Sparkles, X, Orbit, ExternalLink } from "lucide-react"
+import { ArrowUpRight, Sparkles, X, Orbit } from "lucide-react"
 import { useTheme } from "@/components/theme-provider"
-import kevsPicLight from "@/assets/KEVS-PIC.jpg"
-import kevsPicDark from "@/assets/KEVS-PIC-dark.jpg"
 
 export type PortfolioNode = {
   title: string
@@ -28,7 +26,7 @@ type PortfolioSelectorFloatingProps = {
 const defaultItems: PortfolioNode[] = [
   {
     title: "Piesway v1",
-    role: "Full-Stack /Client Work",
+    role: "Full-Stack / Client Work",
     category: "Production World",
     description:
       "A polished portfolio space for real-world systems, client builds, and professional delivery.",
@@ -56,7 +54,10 @@ export default function PortfolioSelectorFloating({
   onSelect,
 }: PortfolioSelectorFloatingProps) {
   const { theme } = useTheme()
-  const launcherImage = theme === "dark" ? kevsPicDark : kevsPicLight
+
+  // Use public folder paths (most reliable on Vercel)
+  const launcherImage =
+    theme === "dark" ? "/assets/KEVS-PIC-dark.jpg" : "/assets/KEVS-PIC.jpg"
 
   const [open, setOpen] = useState(false)
   const [hovered, setHovered] = useState<PortfolioNode | null>(null)
@@ -203,7 +204,7 @@ export default function PortfolioSelectorFloating({
                 </motion.button>
               </div>
 
-              <div className="relative px-3 pt-3 pb-3 mb-3 sm:px-4">
+              <div className="relative mb-3 px-3 pt-3 pb-3 sm:px-4">
                 <div className="mb-3 flex items-center gap-2 px-1 font-mono text-[9px] tracking-[0.26em] text-muted-foreground/40 uppercase">
                   <Orbit className="h-3.5 w-3.5 text-primary/55" />
                   Choose a portal
@@ -268,7 +269,7 @@ export default function PortfolioSelectorFloating({
                                 <p className="font-mono text-[9px] tracking-[0.24em] text-muted-foreground/42 uppercase">
                                   {item.category}
                                 </p>
-                                <h3 className="mt-1 text-[1rem] leading-tight font-mono uppercase tracking-widest text-foreground">
+                                <h3 className="mt-1 font-mono text-[1rem] leading-tight tracking-widest text-foreground uppercase">
                                   {item.title}
                                 </h3>
                               </div>
@@ -311,8 +312,6 @@ export default function PortfolioSelectorFloating({
                     )
                   })}
                 </div>
-
-             
               </div>
             </motion.div>
           </>
@@ -340,6 +339,7 @@ export default function PortfolioSelectorFloating({
             transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
           />
           <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_50%_35%,color-mix(in_oklab,var(--primary)_10%,transparent),transparent_62%)]" />
+
           <motion.div
             animate={{ rotate: open ? 45 : 0 }}
             transition={{ duration: 0.22 }}
