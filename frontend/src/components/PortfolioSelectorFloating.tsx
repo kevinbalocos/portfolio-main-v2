@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { ArrowUpRight, Sparkles, X, Orbit, ExternalLink } from "lucide-react"
 import { useTheme } from "@/components/theme-provider"
-import kevsPicLight from "@/assets/KEVS-PIC.jpg?url"
-import kevsPicDark from "@/assets/KEVS-PIC-dark.jpg?url"
+import kevsPicLight from "@/assets/KEVS-PIC.jpg"
+import kevsPicDark from "@/assets/KEVS-PIC-dark.jpg"
 
 export type PortfolioNode = {
   title: string
@@ -203,7 +203,7 @@ export default function PortfolioSelectorFloating({
                 </motion.button>
               </div>
 
-              <div className="relative px-3 pt-3 pb-3 mb-3 sm:px-4">
+              <div className="relative mb-3 px-3 pt-3 pb-3 sm:px-4">
                 <div className="mb-3 flex items-center gap-2 px-1 font-mono text-[9px] tracking-[0.26em] text-muted-foreground/40 uppercase">
                   <Orbit className="h-3.5 w-3.5 text-primary/55" />
                   Choose a portal
@@ -268,7 +268,7 @@ export default function PortfolioSelectorFloating({
                                 <p className="font-mono text-[9px] tracking-[0.24em] text-muted-foreground/42 uppercase">
                                   {item.category}
                                 </p>
-                                <h3 className="mt-1 text-[1rem] leading-tight font-mono uppercase tracking-widest text-foreground">
+                                <h3 className="mt-1 font-mono text-[1rem] leading-tight tracking-widest text-foreground uppercase">
                                   {item.title}
                                 </h3>
                               </div>
@@ -311,8 +311,6 @@ export default function PortfolioSelectorFloating({
                     )
                   })}
                 </div>
-
-             
               </div>
             </motion.div>
           </>
