@@ -13,6 +13,7 @@ import { MotionConfig, motion, useReducedMotion } from "framer-motion"
 
 type IntroScreenProps = {
   onComplete: () => void
+  onSplitStart?: () => void
 }
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -800,17 +801,22 @@ function Half({
 
 /* ───────────── Intro ───────────── */
 
-export default function IntroScreen({ onComplete }: IntroScreenProps) {
+export default function IntroScreen({
+  onComplete,
+  onSplitStart,
+}: IntroScreenProps) {
   const reduceMotion = Boolean(useReducedMotion())
   const completeRef = useRef(onComplete)
+  const splitStartRef = useRef(onSplitStart)
   const svgRef = useRef<SVGSVGElement>(null)
   const doneRef = useRef(false)
   const [cut, setCut] = useState<{ y: number; vh: number } | null>(null)
 
-  // Keep the latest callback without restarting timers on parent renders.
+  // Keep the latest callbacks without restarting timers on parent renders.
   useEffect(() => {
     completeRef.current = onComplete
-  }, [onComplete])
+    splitStartRef.current = onSplitStart
+  }, [onComplete, onSplitStart])
 
   const finish = useCallback(() => {
     if (doneRef.current) return
@@ -836,6 +842,16 @@ export default function IntroScreen({ onComplete }: IntroScreenProps) {
     }, HOLD_MS)
     return () => window.clearTimeout(timer)
   }, [reduceMotion])
+
+  // Mount the game just as the halves start to part, so the gap reveals it.
+  useEffect(() => {
+    if (!cut) return
+    const timer = window.setTimeout(
+      () => splitStartRef.current?.(),
+      IGNITE_S * 1000
+    )
+    return () => window.clearTimeout(timer)
+  }, [cut])
 
   // Safety net in case the tab is throttled and animation callbacks are late.
   useEffect(() => {
@@ -865,8 +881,6 @@ export default function IntroScreen({ onComplete }: IntroScreenProps) {
           </div>
         ) : (
           <>
-        
-
             <Half side="top" cutY={cut.y} vh={cut.vh} />
             <Half side="bottom" cutY={cut.y} vh={cut.vh} onDone={finish} />
           </>

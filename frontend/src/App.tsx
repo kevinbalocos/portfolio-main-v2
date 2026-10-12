@@ -22,6 +22,7 @@ const STORAGE_KEY = "portfolio-gate-complete"
 
 export function App() {
   const [phase, setPhase] = useState<Phase>("intro")
+  const [splitStarted, setSplitStarted] = useState(false)
   const [mounted, setMounted] = useState(false)
   const { theme } = useTheme()
   const [systemTheme, setSystemTheme] = useState<"dark" | "light">("dark")
@@ -53,11 +54,17 @@ export function App() {
     }
 
     void stopAllAudio()
+    setSplitStarted(false)
     setPhase("intro")
   }, [])
 
+  // The game is already mounted underneath by the time the intro finishes.
   const handleIntroComplete = useCallback(() => {
-    setPhase("game")
+    setPhase((current) => (current === "intro" ? "game" : current))
+  }, [])
+
+  const handleSplitStart = useCallback(() => {
+    setSplitStarted(true)
   }, [])
 
   const handleGameComplete = useCallback(() => {
@@ -118,19 +125,34 @@ export function App() {
 
   if (!mounted) return null
 
+  // The game shows during its own phase, and also underneath the intro
+  // from the moment the split begins.
+  const gameVisible = phase === "game" || (phase === "intro" && splitStarted)
+
   return (
     <>
       <div className="pointer-events-none fixed bottom-4 left-4 z-[70] max-w-[calc(100vw-2rem)] rounded-full border border-border/70 bg-background/80 px-3 py-2 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase shadow-[0_16px_50px_-30px_rgba(0,0,0,0.55)] backdrop-blur-xl">
         {themeHint}
       </div>
 
-      <AnimatePresence mode="wait">
+      {/* Intro overlay (fixed, z-[100]) sits above everything else */}
+      <AnimatePresence>
         {phase === "intro" && (
-          <IntroScreen key="intro" onComplete={handleIntroComplete} />
+          <IntroScreen
+            key="intro"
+            onSplitStart={handleSplitStart}
+            onComplete={handleIntroComplete}
+          />
         )}
+      </AnimatePresence>
 
-        {phase === "game" && (
-          <MemoryGame key="game" onComplete={handleGameComplete} />
+      <AnimatePresence mode="wait">
+        {gameVisible && (
+          <MemoryGame
+            key="game"
+            instant={splitStarted}
+            onComplete={handleGameComplete}
+          />
         )}
 
         {phase === "win" && (

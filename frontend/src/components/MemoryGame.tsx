@@ -69,7 +69,11 @@ type Card = {
   matched: boolean
 }
 
-type MemoryGameProps = { onComplete: () => void }
+type MemoryGameProps = {
+  onComplete: () => void
+  /** When true, skip the opacity fade-in (used when revealed under the intro split). */
+  instant?: boolean
+}
 
 type SkipControl = {
   ready: boolean
@@ -1008,7 +1012,10 @@ function StartScreen({
 
 // ─── MAIN EXPORT ───────────────────────────────────────────────────────────
 
-export default function MemoryGame({ onComplete }: MemoryGameProps) {
+export default function MemoryGame({
+  onComplete,
+  instant = false,
+}: MemoryGameProps) {
   const prefersReducedMotion = useReducedMotion()
   const reduceMotion = Boolean(prefersReducedMotion)
 
@@ -1258,7 +1265,7 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
   return (
     <motion.div
       className="relative min-h-[100svh] w-full overflow-hidden bg-background"
-      initial={{ opacity: 0 }}
+      initial={instant ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.38 }}
     >
