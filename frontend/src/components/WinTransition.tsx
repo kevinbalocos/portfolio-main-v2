@@ -1,241 +1,302 @@
 "use client"
 
-import React, { useMemo } from "react"
-import { motion } from "framer-motion"
-import { BadgeCheck } from "lucide-react"
-import { stopGameMusic } from "@/lib/audio"
+import React, { useEffect, useRef, useState } from "react"
+import {
+  animate,
+  motion,
+  useMotionValue,
+  useReducedMotion,
+  useTransform,
+  type MotionValue,
+  type Variants,
+} from "framer-motion"
+import { playMatchSuccess, stopGameMusic } from "@/lib/audio"
 
 type WinTransitionProps = {
   onComplete: () => void
 }
 
+/*
+  THE IDEA
+  --------
+  One monumental wordmark, "Jeyd.", set in the same Bodoni used on the game's
+  start screen. It rises into frame as a hairline outline. A single scan line
+  crosses it left to right, and everything behind the line becomes solid, like
+  a system coming online. The full stop (the only accent colour on screen)
+  lands last. Then the letters leave upward through the same mask they entered
+  from, which is the direction your hero content rises from.
+
+  Along the bottom, a ruler with 8 ticks, one per pair you matched, is driven
+  by the exact same scan value so type and measure stay in lockstep.
+
+  TIMELINE (s)
+  0.15  letters rise from the mask (stagger)
+  0.90  scan begins, 1.2s, expo-ish in/out
+  2.10  scan lands, the full stop is revealed, match sound
+  2.45  letters exit upward
+  3.25  hand off to the homepage
+*/
+
+const WORD = ["J", "e", "y", "d", "."]
+const PAIRS = 8
+const SCAN_AT = 0.9
+const SCAN_DUR = 1.2
+const OUT_AT = 2.45
+const DONE_AT = 3.25
+
+const EXPO_OUT = [0.16, 1, 0.3, 1] as const
+const EXPO_IN = [0.7, 0, 0.84, 0] as const
+const SCAN_EASE = [0.65, 0, 0.35, 1] as const
+const DISPLAY_FONT = "'Bodoni 72', 'Didot', 'Times New Roman', serif"
+
+const outlineStyle: React.CSSProperties = {
+  color: "transparent",
+  WebkitTextStroke:
+    "1px color-mix(in oklab, var(--foreground) 38%, transparent)",
+}
+const outlineDotStyle: React.CSSProperties = {
+  color: "transparent",
+  WebkitTextStroke: "1px color-mix(in oklab, var(--primary) 55%, transparent)",
+}
+
+const grain =
+  "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")"
+
+// ─── One layer of the wordmark (outline or solid) ──────────────────────────
+function WordLayer({
+  phase,
+  filled,
+  variants,
+}: {
+  phase: "in" | "out"
+  filled: boolean
+  variants: Variants
+}) {
+  return (
+    <motion.span
+      aria-hidden="true"
+      className={`flex overflow-hidden py-[0.1em] pr-[0.05em] pb-[0.16em] ${
+        filled ? "absolute inset-0" : "relative"
+      }`}
+      initial="hidden"
+      animate={phase}
+    >
+      {WORD.map((ch, i) => {
+        const dot = ch === "."
+        return (
+          <motion.span
+            key={i}
+            custom={i}
+            variants={variants}
+            className="inline-block"
+            style={
+              filled
+                ? { color: dot ? "var(--primary)" : "var(--foreground)" }
+                : dot
+                  ? outlineDotStyle
+                  : outlineStyle
+            }
+          >
+            {ch}
+          </motion.span>
+        )
+      })}
+    </motion.span>
+  )
+}
+
+// ─── Ruler tick: lights up once the scan has passed it ─────────────────────
+function Tick({
+  index,
+  progress,
+}: {
+  index: number
+  progress: MotionValue<number>
+}) {
+  const at = index / PAIRS
+  const opacity = useTransform(progress, (v) => (v >= at - 0.001 ? 1 : 0.22))
+  return (
+    <motion.span
+      aria-hidden="true"
+      className="absolute top-0 h-[7px] w-px bg-foreground"
+      style={{ left: `${at * 100}%`, opacity }}
+    />
+  )
+}
+
 export default function WinTransition({ onComplete }: WinTransitionProps) {
-  // Orbital particles — arranged in two rings for more depth
-  const innerParticles = useMemo(
-    () =>
-      Array.from({ length: 12 }).map((_, i) => {
-        const angle = (i / 12) * Math.PI * 2
-        const radius = 62
-        return {
-          i,
-          angle,
-          radius,
-          delay: i * 0.045,
-          duration: 1.4 + (i % 3) * 0.1,
-        }
-      }),
-    []
+  const reduceMotion = Boolean(useReducedMotion())
+  const onCompleteRef = useRef(onComplete)
+  const [phase, setPhase] = useState<"in" | "out">("in")
+
+  // 0 → 1, drives the scan line, the solid fill, the ruler and the counter.
+  const progress = useMotionValue(0)
+  const lineLeft = useTransform(progress, (v) => `${v * 100}%`)
+  const lineOpacity = useTransform(progress, [0, 0.03, 0.97, 1], [0, 1, 1, 0])
+  const fillClip = useTransform(
+    progress,
+    (v) => `inset(0 ${(1 - v) * 100}% 0 0)`
+  )
+  const trailLeft = useTransform(progress, (v) => `calc(${v * 100}% - 24%)`)
+  const counter = useTransform(progress, (v) =>
+    String(Math.round(v * 100)).padStart(3, "0")
   )
 
-  const outerParticles = useMemo(
-    () =>
-      Array.from({ length: 20 }).map((_, i) => {
-        const angle = (i / 20) * Math.PI * 2 + 0.15
-        const radius = 104 + (i % 4) * 6
-        return {
-          i,
-          angle,
-          radius,
-          delay: i * 0.03 + 0.12,
-          duration: 1.8 + (i % 5) * 0.08,
-        }
-      }),
-    []
-  )
-
-  React.useEffect(() => {
-    void stopGameMusic(200)
-    const timer = window.setTimeout(onComplete, 3200)
-    return () => window.clearTimeout(timer)
+  useEffect(() => {
+    onCompleteRef.current = onComplete
   }, [onComplete])
+
+  useEffect(() => {
+    void stopGameMusic(200)
+    const timers: number[] = []
+    let scan: ReturnType<typeof animate> | undefined
+
+    if (reduceMotion) {
+      progress.set(1)
+      timers.push(window.setTimeout(() => onCompleteRef.current(), 1400))
+    } else {
+      scan = animate(progress, 1, {
+        duration: SCAN_DUR,
+        delay: SCAN_AT,
+        ease: SCAN_EASE,
+      })
+      timers.push(
+        window.setTimeout(
+          () => playMatchSuccess(),
+          (SCAN_AT + SCAN_DUR) * 1000
+        ),
+        window.setTimeout(() => setPhase("out"), OUT_AT * 1000),
+        window.setTimeout(() => onCompleteRef.current(), DONE_AT * 1000)
+      )
+    }
+
+    return () => {
+      scan?.stop()
+      timers.forEach((t) => window.clearTimeout(t))
+    }
+  }, [progress, reduceMotion])
+
+  const letterVariants: Variants = reduceMotion
+    ? { hidden: { y: "0%" }, in: { y: "0%" }, out: { y: "0%" } }
+    : {
+        hidden: { y: "118%" },
+        in: (i: number) => ({
+          y: "0%",
+          transition: { duration: 1, delay: 0.15 + i * 0.07, ease: EXPO_OUT },
+        }),
+        out: (i: number) => ({
+          y: "-118%",
+          transition: { duration: 0.7, delay: i * 0.05, ease: EXPO_IN },
+        }),
+      }
 
   return (
     <motion.div
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-background"
+      className="fixed inset-0 z-50 overflow-hidden bg-background"
       initial={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.6, ease: [0.25, 0.46, 0.45, 0.94] }}
+      role="status"
+      aria-live="polite"
+      aria-label="All pairs matched. Opening the portfolio."
     >
-      {/* Background atmosphere */}
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_55%_45%_at_50%_50%,color-mix(in_oklab,var(--primary)_11%,transparent),transparent_65%)]" />
-      </div>
-
-      {/* Subtle grid */}
+      {/* Film grain, the only texture on the stage */}
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.015]"
-        style={{
-          backgroundImage:
-            "linear-gradient(to right, var(--foreground) 1px, transparent 1px), linear-gradient(to bottom, var(--foreground) 1px, transparent 1px)",
-          backgroundSize: "88px 88px",
-        }}
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 opacity-[0.05]"
+        style={{ backgroundImage: grain, backgroundSize: "220px 220px" }}
       />
 
-      {/* Composition */}
-      <div className="relative flex flex-col items-center justify-center gap-8 px-5">
-        {/* Badge + orbital system */}
-        <motion.div
-          className="relative flex h-56 w-56 items-center justify-center sm:h-64 sm:w-64"
-          initial={{ scale: 0.82, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      {/* ── Wordmark ─────────────────────────────────────────── */}
+      <div className="absolute inset-0 grid place-items-center px-4">
+        <motion.h1
+          aria-label="Jeyd"
+          className="relative -translate-y-[3vh] text-[clamp(6.5rem,30vw,24rem)] leading-[1] font-normal tracking-[-0.035em] select-none"
+          style={{ fontFamily: DISPLAY_FONT }}
+          initial={{ scale: 1 }}
+          animate={{ scale: reduceMotion ? 1 : 1.04 }}
+          transition={{ duration: DONE_AT + 0.4, ease: "linear" }}
         >
-          {/* Expanding pulse rings */}
-          {[0, 1, 2, 3].map((ring) => (
-            <motion.div
-              key={ring}
-              className="absolute inset-0 rounded-full border border-primary/18"
-              initial={{ scale: 0.65, opacity: 0.7 }}
-              animate={{ scale: 2.0, opacity: 0 }}
-              transition={{
-                duration: 1.6,
-                delay: ring * 0.28,
-                ease: "easeOut",
+          {/* Light that travels with the scan */}
+          {!reduceMotion && (
+            <motion.span
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 aspect-square w-[70%] -translate-x-1/2 -translate-y-1/2 rounded-full"
+              style={{
+                left: lineLeft,
+                opacity: lineOpacity,
+                background:
+                  "radial-gradient(circle, color-mix(in oklab, var(--primary) 16%, transparent), transparent 62%)",
               }}
             />
-          ))}
+          )}
 
-          {/* Outer orbit ring — subtle, not rotating */}
-          <div className="absolute inset-[8%] rounded-full border border-border/30" />
+          {/* Outline layer sets the box */}
+          <WordLayer phase={phase} filled={false} variants={letterVariants} />
 
-          {/* Inner orbit ring */}
-          <div className="absolute inset-[24%] rounded-full border border-primary/15" />
-
-          {/* Outer orbital particles */}
-          {outerParticles.map((p) => (
-            <motion.div
-              key={`outer-${p.i}`}
-              className="absolute h-0.5 w-0.5 rounded-full bg-primary/60"
-              style={{ left: "50%", top: "50%", marginLeft: -1, marginTop: -1 }}
-              animate={{
-                x: [
-                  Math.cos(p.angle) * p.radius,
-                  Math.cos(p.angle) * (p.radius + 8),
-                  Math.cos(p.angle) * p.radius,
-                ],
-                y: [
-                  Math.sin(p.angle) * p.radius,
-                  Math.sin(p.angle) * (p.radius + 8),
-                  Math.sin(p.angle) * p.radius,
-                ],
-                opacity: [0, 0.7, 0],
-                scale: [0, 1.2, 0],
-              }}
-              transition={{
-                duration: p.duration,
-                repeat: Infinity,
-                delay: p.delay,
-                ease: "easeInOut",
-              }}
-            />
-          ))}
-
-          {/* Inner orbital particles */}
-          {innerParticles.map((p) => (
-            <motion.div
-              key={`inner-${p.i}`}
-              className="absolute h-1 w-1 rounded-full bg-primary"
-              style={{ left: "50%", top: "50%", marginLeft: -2, marginTop: -2 }}
-              animate={{
-                x: [
-                  Math.cos(p.angle) * p.radius,
-                  Math.cos(p.angle) * (p.radius + 6),
-                  Math.cos(p.angle) * p.radius,
-                ],
-                y: [
-                  Math.sin(p.angle) * p.radius,
-                  Math.sin(p.angle) * (p.radius + 6),
-                  Math.sin(p.angle) * p.radius,
-                ],
-                opacity: [0, 0.9, 0],
-                scale: [0.2, 1, 0.2],
-              }}
-              transition={{
-                duration: p.duration,
-                repeat: Infinity,
-                delay: p.delay,
-                ease: "easeInOut",
-              }}
-            />
-          ))}
-
-          {/* Slow rotating sweep arc */}
-          <motion.div
-            className="absolute inset-0 rounded-full"
-            animate={{ rotate: 360 }}
-            transition={{ duration: 6, ease: "linear", repeat: Infinity }}
+          {/* Solid layer, revealed behind the scan line */}
+          <motion.span
+            aria-hidden="true"
+            className="absolute inset-0"
+            style={{ clipPath: fillClip }}
           >
-            <div className="bg-gradient-conic absolute inset-0 rounded-full from-primary/0 via-primary/12 to-primary/0 blur-lg" />
-          </motion.div>
+            <WordLayer phase={phase} filled variants={letterVariants} />
+          </motion.span>
 
-          {/* Central badge — glass surface */}
-          <motion.div
-            className="absolute inset-[34%] grid place-items-center rounded-full border border-primary/20 bg-background/80 shadow-[0_0_0_1px_color-mix(in_oklab,var(--primary)_8%,transparent),0_20px_60px_-20px_rgba(0,0,0,0.5)] backdrop-blur-xl"
-            animate={{
-              boxShadow: [
-                "0 0 0 1px color-mix(in oklab, var(--primary) 8%, transparent), 0 20px 60px -20px rgba(0,0,0,0.5)",
-                "0 0 0 1px color-mix(in oklab, var(--primary) 18%, transparent), 0 0 40px -10px color-mix(in oklab, var(--primary) 18%, transparent), 0 20px 60px -20px rgba(0,0,0,0.5)",
-                "0 0 0 1px color-mix(in oklab, var(--primary) 8%, transparent), 0 20px 60px -20px rgba(0,0,0,0.5)",
-              ],
-            }}
-            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-          >
-            <motion.div
-              initial={{ scale: 0.4, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{
-                delay: 0.2,
-                duration: 0.5,
-                ease: [0.22, 1, 0.36, 1],
-              }}
+          {/* Soft trail behind the line */}
+          {!reduceMotion && (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 overflow-hidden"
             >
-              <BadgeCheck className="h-7 w-7 text-primary sm:h-8 sm:w-8" />
-            </motion.div>
-          </motion.div>
-        </motion.div>
+              <motion.span
+                className="absolute inset-y-0 w-[24%] bg-gradient-to-r from-transparent to-primary/20 mix-blend-plus-lighter"
+                style={{ left: trailLeft, opacity: lineOpacity }}
+              />
+            </span>
+          )}
 
-        {/* Text — clean, minimal, completely visible */}
-        <motion.div
-          className="flex flex-col items-center gap-3 text-center"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{
-            delay: 0.28,
-            duration: 0.5,
-            ease: [0.25, 0.46, 0.45, 0.94],
-          }}
-        >
-          {/* Status pill */}
-          <div className="flex items-center gap-2 rounded-full border border-primary/14 bg-primary/6 px-4 py-1.5">
-            <motion.div
-              className="h-1.5 w-1.5 rounded-full bg-primary"
-              animate={{ opacity: [0.5, 1, 0.5], scale: [0.9, 1.2, 0.9] }}
-              transition={{ duration: 1.6, repeat: Infinity }}
+          {/* The scan line */}
+          {!reduceMotion && (
+            <motion.span
+              aria-hidden="true"
+              className="pointer-events-none absolute -top-[4%] -bottom-[4%] w-px -translate-x-1/2 bg-primary shadow-[0_0_26px_3px_color-mix(in_oklab,var(--primary)_55%,transparent)]"
+              style={{ left: lineLeft, opacity: lineOpacity }}
             />
-          
-          </div>
-
-       
-
-          {/* Thin divider */}
-          <div className="h-px w-16 bg-gradient-to-r from-transparent via-border/70 to-transparent" />
-
-          {/* Loading bar */}
-          <motion.div
-            className="h-px w-28 overflow-hidden rounded-full bg-border/45 sm:w-36"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.38 }}
-          >
-            <motion.div
-              className="h-full rounded-full bg-gradient-to-r from-primary/70 via-primary to-primary/70"
-              initial={{ width: "0%" }}
-              animate={{ width: "100%" }}
-              transition={{ duration: 1.1, delay: 0.44, ease: "easeInOut" }}
-            />
-          </motion.div>
-        </motion.div>
+          )}
+        </motion.h1>
       </div>
+
+      {/* ── Ruler: 8 ticks, one per pair, driven by the same scan ── */}
+      <motion.div
+        className="absolute inset-x-6 bottom-0 pb-[max(2.25rem,env(safe-area-inset-bottom))] sm:inset-x-12"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: phase === "out" ? 0 : 1 }}
+        transition={{
+          duration: phase === "out" ? 0.45 : 0.6,
+          delay: phase === "out" ? 0 : 0.35,
+        }}
+        aria-hidden="true"
+      >
+        <div className="flex items-baseline justify-between text-xs text-muted-foreground/70 tabular-nums">
+          <span>
+            {PAIRS} of {PAIRS} pairs matched
+          </span>
+          <span className="flex items-baseline gap-2">
+            Opening portfolio
+            <motion.span className="text-foreground/85">{counter}</motion.span>
+          </span>
+        </div>
+        <div className="relative mt-3 h-px bg-border/60">
+          <motion.span
+            className="absolute inset-0 origin-left bg-primary"
+            style={{ scaleX: progress }}
+          />
+          {Array.from({ length: PAIRS + 1 }).map((_, i) => (
+            <Tick key={i} index={i} progress={progress} />
+          ))}
+        </div>
+      </motion.div>
     </motion.div>
   )
 }
