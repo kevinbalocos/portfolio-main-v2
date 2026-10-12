@@ -865,33 +865,7 @@ export default function IntroScreen({ onComplete }: IntroScreenProps) {
           </div>
         ) : (
           <>
-            {/* Light that spills out of the seam, seen only through the gap. */}
-            <motion.div
-              aria-hidden="true"
-              className="absolute inset-x-0"
-              style={{
-                top: cut.y - cut.vh * 0.22,
-                height: cut.vh * 0.44,
-                transformOrigin: "50% 50%",
-                background:
-                  "radial-gradient(ellipse 70% 50% at 50% 50%, color-mix(in oklab, var(--primary) 42%, transparent), transparent 72%)",
-              }}
-              initial={{ scaleY: 0.04, opacity: 0 }}
-              animate={{ scaleY: 1, opacity: [0, 1, 0] }}
-              transition={{
-                scaleY: {
-                  duration: SPLIT_S,
-                  delay: IGNITE_S * 0.6,
-                  ease: EASE,
-                },
-                opacity: {
-                  duration: EXIT_S,
-                  delay: IGNITE_S * 0.6,
-                  times: [0, 0.35, 1],
-                  ease: "easeOut",
-                },
-              }}
-            />
+        
 
             <Half side="top" cutY={cut.y} vh={cut.vh} />
             <Half side="bottom" cutY={cut.y} vh={cut.vh} onDone={finish} />
