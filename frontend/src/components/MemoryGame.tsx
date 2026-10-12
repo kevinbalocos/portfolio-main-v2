@@ -49,22 +49,11 @@ import {
 
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 
-/** Seconds before the "Skip game" button unlocks. Starts when this screen mounts. */
 const SKIP_DELAY_SECONDS = 5
 const SKIP_DELAY_MS = SKIP_DELAY_SECONDS * 1000
-
-/** Card flip duration. */
 const FLIP_MS = 500
-/**
- * How long a wrong pair stays face-up AFTER the flip finishes.
- * Raise this if you want players to have even more time to memorise.
- */
 const MISMATCH_VIEW_MS = 1000
-/** Brief pause after a correct pair before the board unlocks again. */
 const MATCH_SETTLE_MS = FLIP_MS + 150
-/** Hand-off overlay shown only when the player actually wins. */
-const WIN_OVERLAY_MS = 1300
-
 const EASE = [0.22, 1, 0.36, 1] as const
 const MONOGRAM = "J"
 const DISPLAY_FONT = "'Bodoni 72', 'Didot', 'Times New Roman', serif"
@@ -80,15 +69,11 @@ type Card = {
   matched: boolean
 }
 
-type MemoryGameProps = {
-  onComplete: () => void
-}
+type MemoryGameProps = { onComplete: () => void }
 
 type SkipControl = {
   ready: boolean
-  /** 0 → 1 over the countdown */
   progress: number
-  /** whole seconds left, never below 1 while locked */
   remaining: number
   onSkip: () => void
 }
@@ -116,9 +101,8 @@ const shuffle = <T,>(array: T[]): T[] => {
 }
 
 function createDeck(): Card[] {
-  const duplicated = [...CARD_DATA, ...CARD_DATA]
   return shuffle(
-    duplicated.map((item, index) => ({
+    [...CARD_DATA, ...CARD_DATA].map((item, index) => ({
       id: index,
       value: item.value,
       tag: item.tag,
@@ -152,11 +136,13 @@ function AudioControls({
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const currentLabel =
+    GAME_SOUND_OPTIONS.find((option) => option.value === sound)?.label ??
+    "Pulse"
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
-      if (!menuOpen) return
-      if (menuRef.current?.contains(event.target as Node)) return
+      if (!menuOpen || menuRef.current?.contains(event.target as Node)) return
       setMenuOpen(false)
     }
     const onEscape = (event: KeyboardEvent) => {
@@ -169,10 +155,6 @@ function AudioControls({
       window.removeEventListener("keydown", onEscape)
     }
   }, [menuOpen])
-
-  const currentLabel =
-    GAME_SOUND_OPTIONS.find((option) => option.value === sound)?.label ??
-    "Pulse"
 
   return (
     <div
@@ -196,7 +178,7 @@ function AudioControls({
       <div className="relative min-w-0 flex-1 sm:flex-initial">
         <button
           type="button"
-          onClick={() => setMenuOpen((c) => !c)}
+          onClick={() => setMenuOpen((current) => !current)}
           className={`flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-full border border-border/60 bg-card/65 px-3 text-left text-foreground transition-colors hover:bg-card sm:h-9 sm:w-[210px] sm:px-3.5 ${focusRing}`}
           aria-expanded={menuOpen}
           aria-haspopup="listbox"
@@ -224,33 +206,27 @@ function AudioControls({
               role="listbox"
               aria-label="Soundtrack"
             >
-              <div className="space-y-0.5">
-                {GAME_SOUND_OPTIONS.map((option) => {
-                  const active = option.value === sound
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => {
-                        onSoundChange(option.value)
-                        setMenuOpen(false)
-                      }}
-                      className={`flex w-full items-center justify-between rounded-[0.75rem] px-3 py-2 text-left transition-colors ${
-                        active
-                          ? "bg-primary/10 text-foreground ring-1 ring-primary/18 ring-inset"
-                          : "text-muted-foreground hover:bg-muted/65 hover:text-foreground"
-                      }`}
-                      role="option"
-                      aria-selected={active}
-                    >
-                      <span className="font-mono text-[0.62rem] tracking-[0.16em] uppercase sm:text-[0.67rem]">
-                        {option.label}
-                      </span>
-                      {active && <Check className="h-3.5 w-3.5 text-primary" />}
-                    </button>
-                  )
-                })}
-              </div>
+              {GAME_SOUND_OPTIONS.map((option) => {
+                const active = option.value === sound
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => {
+                      onSoundChange(option.value)
+                      setMenuOpen(false)
+                    }}
+                    className={`flex w-full items-center justify-between rounded-[0.75rem] px-3 py-2 text-left transition-colors ${active ? "bg-primary/10 text-foreground ring-1 ring-primary/18 ring-inset" : "text-muted-foreground hover:bg-muted/65 hover:text-foreground"}`}
+                    role="option"
+                    aria-selected={active}
+                  >
+                    <span className="font-mono text-[0.62rem] tracking-[0.16em] uppercase sm:text-[0.67rem]">
+                      {option.label}
+                    </span>
+                    {active && <Check className="h-3.5 w-3.5 text-primary" />}
+                  </button>
+                )
+              })}
             </motion.div>
           )}
         </AnimatePresence>
@@ -260,7 +236,6 @@ function AudioControls({
 }
 
 // ─── SKIP BUTTON ───────────────────────────────────────────────────────────
-// A progress ring counts down SKIP_DELAY_SECONDS, then the button unlocks.
 
 function SkipButton({
   skip,
@@ -272,9 +247,9 @@ function SkipButton({
   className?: string
 }) {
   const { ready, progress, remaining, onSkip } = skip
-  const sm = size === "sm"
-  const radius = sm ? 9 : 11
-  const center = sm ? 12 : 15
+  const small = size === "sm"
+  const radius = small ? 9 : 11
+  const center = small ? 12 : 15
   const circumference = 2 * Math.PI * radius
 
   return (
@@ -287,21 +262,13 @@ function SkipButton({
           ? "Skip the game and open the portfolio"
           : `Skip the game. Available in ${remaining} seconds`
       }
-      className={`group inline-flex shrink-0 items-center rounded-full border font-medium transition-colors ${focusRing} ${
-        sm
-          ? "gap-2 py-1 pr-3 pl-1 text-xs"
-          : "h-12 gap-2.5 pr-5 pl-2 text-[13px]"
-      } ${className} ${
-        ready
-          ? "border-border/80 bg-card/70 text-foreground hover:bg-card"
-          : "cursor-not-allowed border-border/50 bg-background/30 text-muted-foreground/70"
-      }`}
+      className={`group inline-flex shrink-0 items-center rounded-full border font-medium transition-colors ${focusRing} ${small ? "gap-2 py-1 pr-3 pl-1 text-xs" : "h-12 gap-2.5 pr-5 pl-2 text-[13px]"} ${className} ${ready ? "border-border/80 bg-card/70 text-foreground hover:bg-card" : "cursor-not-allowed border-border/50 bg-background/30 text-muted-foreground/70"}`}
     >
       <span
-        className={`relative grid place-items-center ${sm ? "h-6 w-6" : "h-8 w-8"}`}
+        className={`relative grid place-items-center ${small ? "h-6 w-6" : "h-8 w-8"}`}
       >
         <svg
-          viewBox={sm ? "0 0 24 24" : "0 0 30 30"}
+          viewBox={small ? "0 0 24 24" : "0 0 30 30"}
           className="absolute inset-0 -rotate-90"
           aria-hidden="true"
         >
@@ -330,18 +297,18 @@ function SkipButton({
         </svg>
         {ready ? (
           <SkipForward
-            className={`relative text-primary ${sm ? "h-3 w-3" : "h-3.5 w-3.5"}`}
+            className={`relative text-primary ${small ? "h-3 w-3" : "h-3.5 w-3.5"}`}
           />
         ) : (
           <span
-            className={`relative font-mono tabular-nums ${sm ? "text-[10px]" : "text-[11px]"}`}
+            className={`relative font-mono tabular-nums ${small ? "text-[10px]" : "text-[11px]"}`}
           >
             {remaining}
           </span>
         )}
       </span>
       <span>
-        {ready ? (sm ? "Skip" : "Skip game") : `Skip in ${remaining}s`}
+        {ready ? (small ? "Skip" : "Skip game") : `Skip in ${remaining}s`}
       </span>
     </button>
   )
@@ -393,11 +360,7 @@ function StatStrip({
             {[1, 2, 3].map((n) => (
               <Star
                 key={n}
-                className={`h-3 w-3 transition-colors sm:h-3.5 sm:w-3.5 ${
-                  n <= stars
-                    ? "fill-current text-primary"
-                    : "text-muted-foreground/30"
-                }`}
+                className={`h-3 w-3 transition-colors sm:h-3.5 sm:w-3.5 ${n <= stars ? "fill-current text-primary" : "text-muted-foreground/30"}`}
               />
             ))}
           </p>
@@ -408,7 +371,6 @@ function StatStrip({
 }
 
 // ─── MEMORY CARD ───────────────────────────────────────────────────────────
-// True 3D flip: both faces live in the DOM, the container rotates 180°.
 
 function CornerTicks() {
   const tick =
@@ -465,7 +427,6 @@ function MemoryCard({
           : `Card ${index + 1}, face down`
       }
     >
-      {/* Entrance (deal-in) */}
       <motion.div
         className="absolute inset-0"
         initial={reduceMotion ? false : { opacity: 0, y: 14 }}
@@ -476,7 +437,6 @@ function MemoryCard({
           ease: EASE,
         }}
       >
-        {/* Perspective + wrong-pair shake */}
         <motion.div
           className="absolute inset-0"
           style={{ perspective: 900 }}
@@ -487,7 +447,6 @@ function MemoryCard({
               : { duration: 0 }
           }
         >
-          {/* The flipper */}
           <motion.div
             className="absolute inset-0"
             style={{ transformStyle: "preserve-3d" }}
@@ -497,7 +456,6 @@ function MemoryCard({
               ease: [0.4, 0, 0.2, 1],
             }}
           >
-            {/* Back (face down) */}
             <div
               className="absolute inset-0 overflow-hidden rounded-[inherit] border border-border/65 bg-card shadow-[0_12px_32px_-24px_rgba(0,0,0,0.68)] transition-colors group-hover:border-border"
               style={hiddenBackface}
@@ -517,37 +475,21 @@ function MemoryCard({
               <CornerTicks />
               <span
                 className="absolute inset-0 grid place-items-center text-[1.6rem] leading-none text-foreground/25 transition-colors duration-300 group-hover:text-primary/70 sm:text-[2.4rem]"
-                style={{
-                  fontFamily: "'Bodoni 72', 'Didot', 'Times New Roman', serif",
-                }}
+                style={{ fontFamily: DISPLAY_FONT }}
                 aria-hidden="true"
               >
                 {MONOGRAM}
               </span>
             </div>
 
-            {/* Front (face up) */}
             <div
-              className={`absolute inset-0 rounded-[inherit] border shadow-[0_12px_32px_-24px_rgba(0,0,0,0.68)] transition-colors duration-300 ${
-                card.matched
-                  ? "border-primary/45 bg-primary/10"
-                  : wrong
-                    ? "border-destructive/50 bg-destructive/10"
-                    : "border-primary/25 bg-card"
-              }`}
+              className={`absolute inset-0 rounded-[inherit] border shadow-[0_12px_32px_-24px_rgba(0,0,0,0.68)] transition-colors duration-300 ${card.matched ? "border-primary/45 bg-primary/10" : wrong ? "border-destructive/50 bg-destructive/10" : "border-primary/25 bg-card"}`}
               style={{ ...hiddenBackface, transform: "rotateY(180deg)" }}
             >
               <div className="absolute inset-0 rounded-[inherit] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent_40%)]" />
-
               <div className="relative flex h-full flex-col items-center justify-center gap-1.5 p-1 text-center sm:gap-2 sm:p-2">
                 <div
-                  className={`grid h-9 w-9 place-items-center rounded-[0.7rem] border sm:h-12 sm:w-12 sm:rounded-[0.9rem] ${
-                    card.matched
-                      ? "border-primary/30 bg-primary/12 text-primary"
-                      : wrong
-                        ? "border-destructive/30 bg-destructive/10 text-destructive"
-                        : "border-border/55 bg-background/55 text-foreground"
-                  }`}
+                  className={`grid h-9 w-9 place-items-center rounded-[0.7rem] border sm:h-12 sm:w-12 sm:rounded-[0.9rem] ${card.matched ? "border-primary/30 bg-primary/12 text-primary" : wrong ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-border/55 bg-background/55 text-foreground"}`}
                 >
                   <Icon className="h-[18px] w-[18px] sm:h-6 sm:w-6" />
                 </div>
@@ -592,7 +534,7 @@ function MemoryCard({
   )
 }
 
-// ─── MANIFEST (checklist of what to find) ──────────────────────────────────
+// ─── MANIFEST ──────────────────────────────────────────────────────────────
 
 function ManifestList({
   matchedValues,
@@ -620,33 +562,22 @@ function ManifestList({
           </span>
         </p>
       </div>
-
       <ul className="space-y-1.5">
         {CARD_DATA.map(({ value, tag, Icon }) => {
           const found = matchedValues.has(value)
           return (
             <li
               key={value}
-              className={`flex items-center gap-3 rounded-[0.8rem] border px-2.5 py-2 transition-colors duration-300 ${
-                found
-                  ? "border-primary/30 bg-primary/8"
-                  : "border-border/45 bg-background/25"
-              }`}
+              className={`flex items-center gap-3 rounded-[0.8rem] border px-2.5 py-2 transition-colors duration-300 ${found ? "border-primary/30 bg-primary/8" : "border-border/45 bg-background/25"}`}
             >
               <span
-                className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors duration-300 ${
-                  found
-                    ? "bg-primary/15 text-primary"
-                    : "bg-muted/50 text-muted-foreground/50"
-                }`}
+                className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors duration-300 ${found ? "bg-primary/15 text-primary" : "bg-muted/50 text-muted-foreground/50"}`}
               >
                 <Icon className="h-4 w-4" />
               </span>
               <div className="min-w-0 flex-1">
                 <p
-                  className={`text-sm leading-tight font-medium transition-colors ${
-                    found ? "text-foreground" : "text-muted-foreground/70"
-                  }`}
+                  className={`text-sm leading-tight font-medium transition-colors ${found ? "text-foreground" : "text-muted-foreground/70"}`}
                 >
                   {value}
                 </p>
@@ -690,11 +621,7 @@ function ManifestChips({
             <motion.span
               key={value}
               title={value}
-              className={`grid h-7 w-7 place-items-center rounded-lg border transition-colors duration-300 sm:h-8 sm:w-8 ${
-                done
-                  ? "border-primary/30 bg-primary/10 text-primary"
-                  : "border-dashed border-border/50 text-muted-foreground/30"
-              }`}
+              className={`grid h-7 w-7 place-items-center rounded-lg border transition-colors duration-300 sm:h-8 sm:w-8 ${done ? "border-primary/30 bg-primary/10 text-primary" : "border-dashed border-border/50 text-muted-foreground/30"}`}
               animate={done ? { scale: [1, 1.18, 1] } : { scale: 1 }}
               transition={{ duration: 0.4 }}
             >
@@ -712,7 +639,6 @@ function ManifestChips({
 }
 
 // ─── START SCREEN ──────────────────────────────────────────────────────────
-// One centred axis: fanned cards → headline → actions → three-step path → footer.
 
 const staggerContainer = {
   hidden: { opacity: 0 },
@@ -723,11 +649,7 @@ const staggerContainer = {
 }
 const fadeUp = {
   hidden: { opacity: 0, y: 10 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.5, ease: EASE },
-  },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: EASE } },
 }
 
 const STEPS: Array<{ Icon: LucideIcon; title: string; body: string }> = [
@@ -748,7 +670,6 @@ const STEPS: Array<{ Icon: LucideIcon; title: string; body: string }> = [
   },
 ]
 
-// A hand of five cards: two matching pairs flank the locked portfolio card.
 type FanSlot = {
   x: number
   y: number
@@ -759,7 +680,6 @@ type FanSlot = {
   label?: string
   hideOnMobile?: boolean
 }
-
 const FAN: FanSlot[] = [
   {
     x: -150,
@@ -827,15 +747,12 @@ function FanCard({
   reduceMotion: boolean
 }) {
   const Icon = slot.Icon
-
   return (
     <motion.div
       custom={slot}
       variants={fanVariants}
       style={{ zIndex: slot.z }}
-      className={`absolute top-0 left-1/2 -ml-10 h-[112px] w-20 sm:-ml-[44px] sm:h-[124px] sm:w-[88px] ${
-        slot.hideOnMobile ? "hidden sm:block" : ""
-      }`}
+      className={`absolute top-0 left-1/2 -ml-10 h-[112px] w-20 sm:-ml-[44px] sm:h-[124px] sm:w-[88px] ${slot.hideOnMobile ? "hidden sm:block" : ""}`}
     >
       <motion.div
         className="h-full w-full"
@@ -895,8 +812,8 @@ function CardFan({ reduceMotion }: { reduceMotion: boolean }) {
       whileHover={reduceMotion ? undefined : "spread"}
       aria-hidden="true"
     >
-      {FAN.map((slot, i) => (
-        <FanCard key={i} slot={slot} reduceMotion={reduceMotion} />
+      {FAN.map((slot, index) => (
+        <FanCard key={index} slot={slot} reduceMotion={reduceMotion} />
       ))}
     </motion.div>
   )
@@ -917,20 +834,19 @@ function StartScreen({
 }) {
   const reduceMotion = Boolean(prefersReducedMotion)
   const currentTrack =
-    GAME_SOUND_OPTIONS.find((i) => i.value === gameSound)?.label ?? "Pulse"
+    GAME_SOUND_OPTIONS.find((item) => item.value === gameSound)?.label ??
+    "Pulse"
 
   return (
     <motion.div
       key="start"
-      className="relative w-full max-w-[640px] overflow-hidden "
+      className="relative w-full max-w-[640px] overflow-hidden"
       initial={{ opacity: 0, scale: 0.985, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.985, y: -6 }}
       transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
     >
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
-
-      {/* Atmosphere: a warm pool of light behind the cards + a faint grid, echoing the intro */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0"
@@ -967,11 +883,9 @@ function StartScreen({
             </span>
           </div>
         </motion.div>
-
         <motion.div variants={fadeUp} className="mt-8 w-full">
           <CardFan reduceMotion={reduceMotion} />
         </motion.div>
-
         <motion.div variants={fadeUp} className="mt-9 space-y-3.5">
           <h3
             className="text-[clamp(1.85rem,7vw,3.25rem)] leading-[1.04] font-normal tracking-[-0.02em] text-foreground"
@@ -988,7 +902,6 @@ function StartScreen({
             ahead in {SKIP_DELAY_SECONDS} seconds.
           </p>
         </motion.div>
-
         <motion.div
           variants={fadeUp}
           className="mt-8 flex w-full flex-col items-stretch justify-center gap-3 sm:w-auto sm:flex-row sm:items-center"
@@ -1034,11 +947,9 @@ function StartScreen({
               </span>
             </motion.button>
           </div>
-
           <SkipButton skip={skip} className="justify-center sm:justify-start" />
         </motion.div>
 
-        {/* Three-step path: equal columns, one dashed line through the icon centres */}
         <motion.ol
           variants={fadeUp}
           className="relative mt-11 grid w-full grid-cols-3 gap-2 sm:gap-4"
@@ -1068,7 +979,6 @@ function StartScreen({
         </motion.ol>
       </motion.div>
 
-      {/* Footer: lock note on the left, sound status on the right */}
       <div className="relative flex flex-col items-center gap-2 border-t border-border/35 px-5 py-3.5 text-xs text-muted-foreground/60 sm:flex-row sm:justify-between sm:px-8">
         <span className="inline-flex items-center gap-2">
           <Lock className="h-3 w-3 shrink-0" />
@@ -1081,9 +991,7 @@ function StartScreen({
           </span>
           <span className="h-3 w-px bg-border/70" aria-hidden="true" />
           <span
-            className={`inline-flex items-center gap-1.5 ${
-              gameMutedState ? "" : "text-primary/80"
-            }`}
+            className={`inline-flex items-center gap-1.5 ${gameMutedState ? "" : "text-primary/80"}`}
           >
             {gameMutedState ? (
               <VolumeX className="h-3 w-3" />
@@ -1094,64 +1002,6 @@ function StartScreen({
           </span>
         </span>
       </div>
-    </motion.div>
-  )
-}
-
-// ─── WIN OVERLAY ───────────────────────────────────────────────────────────
-// Only shown when the player actually completes the game. Skipping has no overlay.
-
-function WinOverlay({
-  prefersReducedMotion,
-}: {
-  prefersReducedMotion: boolean | null
-}) {
-  return (
-    <motion.div
-      className="fixed inset-0 z-50 grid place-items-center bg-background/75 px-6 backdrop-blur-md"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.25 }}
-      role="status"
-      aria-live="polite"
-    >
-      <motion.div
-        className="flex flex-col items-center gap-5 text-center"
-        initial={{ opacity: 0, y: 10, scale: 0.96 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.4, ease: EASE }}
-      >
-        <div className="relative grid h-16 w-16 place-items-center rounded-full border border-primary/25 bg-primary/10 text-primary">
-          {!prefersReducedMotion && (
-            <motion.span
-              className="absolute inset-0 rounded-full border border-primary/35"
-              initial={{ scale: 1, opacity: 0.6 }}
-              animate={{ scale: 1.7, opacity: 0 }}
-              transition={{ duration: 1.2, ease: "easeOut", repeat: Infinity }}
-            />
-          )}
-          <Check className="h-6 w-6" strokeWidth={2.5} />
-        </div>
-
-        <div className="space-y-1">
-          <p className="text-lg font-semibold tracking-tight text-foreground">
-            Challenge complete
-          </p>
-          <p className="text-sm text-muted-foreground/70">
-            Unlocking the portfolio…
-          </p>
-        </div>
-
-        <div className="h-0.5 w-44 overflow-hidden rounded-full bg-border/60">
-          <motion.div
-            className="h-full origin-left bg-primary"
-            initial={{ scaleX: 0 }}
-            animate={{ scaleX: 1 }}
-            transition={{ duration: WIN_OVERLAY_MS / 1000, ease: "linear" }}
-          />
-        </div>
-      </motion.div>
     </motion.div>
   )
 }
@@ -1174,7 +1024,6 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
   const [skipCodeInput, setSkipCodeInput] = useState("")
   const [gameMutedState, setGameMutedState] = useState(() => getGameMuted())
   const [gameSound, setGameSoundState] = useState(() => getCurrentGameSound())
-  const [showWin, setShowWin] = useState(false)
   const [skipElapsed, setSkipElapsed] = useState(0)
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -1187,48 +1036,39 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
   const onCompleteRef = useRef(onComplete)
 
   const gameComplete = matched === CARD_DATA.length
-
-  const stars = useMemo(() => {
-    if (moves <= 14) return 3
-    if (moves <= 20) return 2
-    return 1
-  }, [moves])
-
+  const stars = useMemo(() => (moves <= 14 ? 3 : moves <= 20 ? 2 : 1), [moves])
   const matchedValues = useMemo(
-    () => new Set(cards.filter((c) => c.matched).map((c) => c.value)),
+    () =>
+      new Set(cards.filter((card) => card.matched).map((card) => card.value)),
     [cards]
   )
 
-  // Keep the latest callback without restarting timers.
   useEffect(() => {
     onCompleteRef.current = onComplete
   }, [onComplete])
-
   useEffect(() => {
     setCards(createDeck())
   }, [])
-
   useEffect(() => {
     cardsRef.current = cards
   }, [cards])
 
-  // Fires the parent callback exactly once.
+  // Call the parent exactly once and immediately. No win/complete overlay is rendered.
   const finish = useCallback(() => {
     if (completionFiredRef.current) return
     completionFiredRef.current = true
     onCompleteRef.current()
   }, [])
 
-  // Win path: show the short celebration overlay, then hand off.
+  // Winning or entering the secret code directly continues to the portfolio.
   const unlock = useCallback(() => {
     if (unlockedRef.current) return
     unlockedRef.current = true
     setLockBoard(true)
     setSelected([])
-    setShowWin(true)
-  }, [])
+    finish()
+  }, [finish])
 
-  // Skip path: no overlay, no animation, straight to the portfolio.
   const skipGame = useCallback(() => {
     if (unlockedRef.current) return
     unlockedRef.current = true
@@ -1236,7 +1076,7 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
     finish()
   }, [finish])
 
-  // ── Skip countdown: starts when the game screen mounts ──
+  // Skip countdown starts when the game screen mounts.
   useEffect(() => {
     const start = performance.now()
     const id = window.setInterval(() => {
@@ -1257,12 +1097,13 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
     },
   }
 
-  // ── Game clock ──
+  // Game clock.
   useEffect(() => {
     if (!gameStarted || gameComplete) return
-    timerRef.current = setInterval(() => {
-      setSeconds((c) => c + 1)
-    }, 1000)
+    timerRef.current = setInterval(
+      () => setSeconds((current) => current + 1),
+      1000
+    )
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current)
@@ -1280,7 +1121,7 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
     void switchGameMusic(gameSound)
   }, [gameStarted, gameSound])
 
-  // ── Pair resolution ──
+  // Resolve a pair after both cards are visible.
   useEffect(() => {
     if (selected.length !== 2) return
     const [firstIndex, secondIndex] = selected
@@ -1290,32 +1131,28 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
     if (!firstCard || !secondCard) return
 
     setLockBoard(true)
-
     if (matchTimeoutRef.current) {
       clearTimeout(matchTimeoutRef.current)
       matchTimeoutRef.current = null
     }
 
-    const isMatch = firstCard.value === secondCard.value
-
-    if (isMatch) {
+    if (firstCard.value === secondCard.value) {
       matchTimeoutRef.current = setTimeout(() => {
         playMatchSuccess()
-        setCards((prev) =>
-          prev.map((card) =>
+        setCards((previous) =>
+          previous.map((card) =>
             card.value === firstCard.value ? { ...card, matched: true } : card
           )
         )
-        setMatched((c) => c + 1)
+        setMatched((current) => current + 1)
         setSelected([])
         setLockBoard(false)
       }, MATCH_SETTLE_MS)
     } else {
       setWrongPair([firstIndex, secondIndex])
-      // Wait for the flip to finish, then give the player time to read both cards.
       matchTimeoutRef.current = setTimeout(() => {
-        setCards((prev) =>
-          prev.map((card, index) =>
+        setCards((previous) =>
+          previous.map((card, index) =>
             index === firstIndex || index === secondIndex
               ? { ...card, flipped: false }
               : card
@@ -1327,8 +1164,7 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
       }, FLIP_MS + MISMATCH_VIEW_MS)
     }
 
-    setMoves((c) => c + 1)
-
+    setMoves((current) => current + 1)
     return () => {
       if (matchTimeoutRef.current) {
         clearTimeout(matchTimeoutRef.current)
@@ -1337,10 +1173,10 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
     }
   }, [selected])
 
-  // ── Secret code: type "jeydu" anywhere to unlock instantly ──
+  // Secret code: type "jeydu" anywhere to unlock instantly.
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase()
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase()
       if (!/^[a-z]$/.test(key)) return
       skipCodeRef.current = (skipCodeRef.current + key).slice(-5)
       setSkipCodeInput(skipCodeRef.current)
@@ -1353,25 +1189,19 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [unlock])
 
-  // ── Win condition ──
+  // As soon as the eighth pair is counted, proceed without showing a completion screen.
   useEffect(() => {
     if (gameStarted && gameComplete) unlock()
   }, [gameStarted, gameComplete, unlock])
 
-  // ── Win hand-off: let the overlay play, then tell the parent ──
-  useEffect(() => {
-    if (!showWin) return
-    const timer = window.setTimeout(finish, WIN_OVERLAY_MS)
-    return () => window.clearTimeout(timer)
-  }, [showWin, finish])
-
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       if (timerRef.current) clearInterval(timerRef.current)
       if (matchTimeoutRef.current) clearTimeout(matchTimeoutRef.current)
       void stopGameMusic(0)
-    }
-  }, [])
+    },
+    []
+  )
 
   const startGame = () => {
     setGameStarted(true)
@@ -1379,7 +1209,7 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
   }
 
   const restartGame = () => {
-    if (showWin || unlockedRef.current) return
+    if (unlockedRef.current) return
     if (matchTimeoutRef.current) {
       clearTimeout(matchTimeoutRef.current)
       matchTimeoutRef.current = null
@@ -1391,8 +1221,7 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
     setSeconds(0)
     setMatched(0)
     setLockBoard(false)
-    // Remount the board so every card is dealt face-down (no peeking mid-flip).
-    setDealKey((k) => k + 1)
+    setDealKey((current) => current + 1)
   }
 
   const handleMuteToggle = () => {
@@ -1402,7 +1231,7 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
   }
 
   const handleSoundChange = (next: string) => {
-    const valid = GAME_SOUND_OPTIONS.some((o) => o.value === next)
+    const valid = GAME_SOUND_OPTIONS.some((option) => option.value === next)
       ? (next as "game-sound" | "game-sound" | "game-sound3" | "game-sound4")
       : "game-sound"
     setGameSoundState(valid)
@@ -1410,20 +1239,21 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
   }
 
   const flipCard = (index: number) => {
-    if (!gameStarted || lockBoard || gameComplete || showWin) return
+    if (!gameStarted || lockBoard || gameComplete || unlockedRef.current) return
     const card = cards[index]
-    if (card.flipped || card.matched || selected.includes(index)) return
+    if (!card || card.flipped || card.matched || selected.includes(index))
+      return
     playCardFlip()
-    setCards((prev) =>
-      prev.map((c, i) => (i === index ? { ...c, flipped: true } : c))
+    setCards((previous) =>
+      previous.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, flipped: true } : item
+      )
     )
-    setSelected((prev) => [...prev, index])
+    setSelected((previous) => [...previous, index])
   }
 
-  const formatTime = (secs: number) => {
-    const mins = Math.floor(secs / 60)
-    return `${mins}:${(secs % 60).toString().padStart(2, "0")}`
-  }
+  const formatTime = (secs: number) =>
+    `${Math.floor(secs / 60)}:${(secs % 60).toString().padStart(2, "0")}`
 
   return (
     <motion.div
@@ -1454,17 +1284,13 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
             <motion.section
               key="game"
               aria-label="Memory game"
-              className={`relative w-full max-w-[420px] overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/40 shadow-[0_32px_80px_-48px_rgba(0,0,0,0.65)] backdrop-blur-2xl sm:max-w-[560px] lg:max-w-[920px] lg:rounded-[1.75rem] ${
-                showWin ? "pointer-events-none" : ""
-              }`}
+              className="relative w-full max-w-[420px] overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/40 shadow-[0_32px_80px_-48px_rgba(0,0,0,0.65)] backdrop-blur-2xl sm:max-w-[560px] lg:max-w-[920px] lg:rounded-[1.75rem]"
               initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: showWin ? 0.5 : 1, y: 0 }}
+              animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.3 }}
             >
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/28 to-transparent" />
-
-              {/* Header: title, restart, skip. The bottom edge doubles as progress. */}
               <header className="relative flex items-center justify-between gap-3 border-b border-border/50 px-3.5 py-3 sm:px-5">
                 <div className="flex min-w-0 items-center gap-3">
                   <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[0.7rem] bg-primary/10 text-primary">
@@ -1485,12 +1311,10 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
                     </p>
                   </div>
                 </div>
-
                 <div className="flex shrink-0 items-center gap-2">
                   <button
                     type="button"
                     onClick={restartGame}
-                    disabled={showWin}
                     className={`grid h-8 w-8 place-items-center rounded-full border border-border/60 bg-card/60 text-muted-foreground transition-colors hover:bg-card hover:text-foreground ${focusRing}`}
                     aria-label="Restart game"
                     title="Restart"
@@ -1499,7 +1323,6 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
                   </button>
                   <SkipButton skip={skipControl} size="sm" />
                 </div>
-
                 <div className="absolute inset-x-0 -bottom-px h-[2px] bg-transparent">
                   <motion.div
                     className="h-full bg-primary"
@@ -1513,7 +1336,6 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
               </header>
 
               <div className="grid lg:grid-cols-[minmax(0,1fr)_290px]">
-                {/* Board column */}
                 <div className="p-3 sm:p-5 lg:p-6">
                   <div className="mx-auto flex w-full max-w-[520px] flex-col gap-3 sm:gap-4">
                     <StatStrip
@@ -1521,7 +1343,6 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
                       time={formatTime(seconds)}
                       stars={stars}
                     />
-
                     <div
                       key={dealKey}
                       className="grid grid-cols-4 gap-1.5 sm:gap-2.5"
@@ -1533,12 +1354,9 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
                           index={index}
                           wrong={wrongPair.includes(index)}
                           reduceMotion={reduceMotion}
-                          disabled={
-                            lockBoard || card.matched || card.flipped || showWin
-                          }
+                          disabled={lockBoard || card.matched || card.flipped}
                           canHover={
                             !reduceMotion &&
-                            !showWin &&
                             !lockBoard &&
                             !card.flipped &&
                             !card.matched
@@ -1547,8 +1365,6 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
                         />
                       ))}
                     </div>
-
-                    {/* Small screens: compact checklist under the board */}
                     <div className="lg:hidden">
                       <ManifestChips
                         matchedValues={matchedValues}
@@ -1558,7 +1374,6 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
                   </div>
                 </div>
 
-                {/* Large screens: full checklist sidebar */}
                 <aside className="hidden flex-col gap-5 border-l border-border/50 bg-background/20 p-5 lg:flex">
                   <ManifestList
                     matchedValues={matchedValues}
@@ -1575,15 +1390,8 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
             </motion.section>
           )}
         </AnimatePresence>
-
         <div className="sr-only">Skip code buffer: {skipCodeInput}</div>
       </div>
-
-      <AnimatePresence>
-        {showWin && (
-          <WinOverlay key="win" prefersReducedMotion={prefersReducedMotion} />
-        )}
-      </AnimatePresence>
     </motion.div>
   )
 }
