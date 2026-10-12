@@ -922,7 +922,7 @@ function StartScreen({
   return (
     <motion.div
       key="start"
-      className="relative w-full max-w-[640px] overflow-hidden rounded-[2rem] border border-border/60 bg-card/40 shadow-[0_32px_80px_-48px_rgba(0,0,0,0.65)] backdrop-blur-2xl"
+      className="relative w-full max-w-[640px] overflow-hidden "
       initial={{ opacity: 0, scale: 0.985, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.985, y: -6 }}
