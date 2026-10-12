@@ -1,23 +1,36 @@
 "use client"
 
-import React, { useEffect, useMemo, useRef, useState } from "react"
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  AnimatePresence,
+  motion,
+  useReducedMotion,
+  type Variants,
+} from "framer-motion"
 import {
   Atom,
+  Brain,
   Braces,
+  Check,
   ChevronDown,
-  Code2,
-  Cpu,
   Database,
-  Gamepad2,
-  Grid2x2,
   Layers3,
-  LayoutGrid,
+  Lock,
+  MousePointerClick,
   Music2,
   PenTool,
-  ShieldCheck,
+  Play,
+  RotateCcw,
+  Server,
+  SkipForward,
+  Sparkles,
+  Star,
+  Target,
+  Timer,
   Volume2,
   VolumeX,
+  Wind,
+  Workflow,
   type LucideIcon,
 } from "lucide-react"
 import {
@@ -34,11 +47,34 @@ import {
   switchGameMusic,
 } from "@/lib/audio"
 
+// ─── CONFIG ────────────────────────────────────────────────────────────────
+
+/** Seconds before the "Skip game" button unlocks. Starts when this screen mounts. */
+const SKIP_DELAY_SECONDS = 5
+const SKIP_DELAY_MS = SKIP_DELAY_SECONDS * 1000
+
+/** Card flip duration. */
+const FLIP_MS = 500
+/**
+ * How long a wrong pair stays face-up AFTER the flip finishes.
+ * Raise this if you want players to have even more time to memorise.
+ */
+const MISMATCH_VIEW_MS = 1000
+/** Brief pause after a correct pair before the board unlocks again. */
+const MATCH_SETTLE_MS = FLIP_MS + 150
+/** Hand-off overlay shown only when the player actually wins. */
+const WIN_OVERLAY_MS = 1300
+
+const EASE = [0.22, 1, 0.36, 1] as const
+const MONOGRAM = "J"
+const DISPLAY_FONT = "'Bodoni 72', 'Didot', 'Times New Roman', serif"
+
 // ─── TYPES ─────────────────────────────────────────────────────────────────
 
 type Card = {
   id: number
   value: string
+  tag: string
   Icon: LucideIcon
   flipped: boolean
   matched: boolean
@@ -48,17 +84,26 @@ type MemoryGameProps = {
   onComplete: () => void
 }
 
+type SkipControl = {
+  ready: boolean
+  /** 0 → 1 over the countdown */
+  progress: number
+  /** whole seconds left, never below 1 while locked */
+  remaining: number
+  onSkip: () => void
+}
+
 // ─── CARD DATA ─────────────────────────────────────────────────────────────
 
-const CARD_DATA: Array<{ value: string; Icon: LucideIcon }> = [
-  { value: "React", Icon: Atom },
-  { value: "TypeScript", Icon: Braces },
-  { value: "Node.js", Icon: Code2 },
-  { value: "Tailwind", Icon: LayoutGrid },
-  { value: "Figma", Icon: PenTool },
-  { value: "UI Systems", Icon: Layers3 },
-  { value: "API Logic", Icon: Cpu },
-  { value: "Database", Icon: Database },
+const CARD_DATA: Array<{ value: string; tag: string; Icon: LucideIcon }> = [
+  { value: "React", tag: "Interface", Icon: Atom },
+  { value: "TypeScript", tag: "Language", Icon: Braces },
+  { value: "Node.js", tag: "Runtime", Icon: Server },
+  { value: "Tailwind", tag: "Styling", Icon: Wind },
+  { value: "Figma", tag: "Design", Icon: PenTool },
+  { value: "UI Systems", tag: "Components", Icon: Layers3 },
+  { value: "API Logic", tag: "Backend", Icon: Workflow },
+  { value: "Database", tag: "Data", Icon: Database },
 ]
 
 const shuffle = <T,>(array: T[]): T[] => {
@@ -76,11 +121,20 @@ function createDeck(): Card[] {
     duplicated.map((item, index) => ({
       id: index,
       value: item.value,
+      tag: item.tag,
       Icon: item.Icon,
       flipped: false,
       matched: false,
     }))
   )
+}
+
+const focusRing =
+  "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+
+const hiddenBackface: React.CSSProperties = {
+  backfaceVisibility: "hidden",
+  WebkitBackfaceVisibility: "hidden",
 }
 
 // ─── AUDIO CONTROLS ────────────────────────────────────────────────────────
@@ -128,8 +182,9 @@ function AudioControls({
       <button
         type="button"
         onClick={onToggleMute}
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-border/60 bg-card/65 text-foreground transition-colors hover:bg-card focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none sm:h-9 sm:w-9"
+        className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border border-border/60 bg-card/65 text-foreground transition-colors hover:bg-card sm:h-9 sm:w-9 ${focusRing}`}
         aria-label={muted ? "Unmute game audio" : "Mute game audio"}
+        aria-pressed={muted}
       >
         {muted ? (
           <VolumeX className="h-3.5 w-3.5" />
@@ -142,9 +197,10 @@ function AudioControls({
         <button
           type="button"
           onClick={() => setMenuOpen((c) => !c)}
-          className="flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-full border border-border/60 bg-card/65 px-3 text-left text-foreground transition-colors hover:bg-card focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none sm:h-9 sm:w-[210px] sm:px-3.5"
+          className={`flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-full border border-border/60 bg-card/65 px-3 text-left text-foreground transition-colors hover:bg-card sm:h-9 sm:w-[210px] sm:px-3.5 ${focusRing}`}
           aria-expanded={menuOpen}
           aria-haspopup="listbox"
+          aria-label={`Soundtrack: ${currentLabel}`}
         >
           <span className="flex min-w-0 items-center gap-1.5">
             <Music2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -166,6 +222,7 @@ function AudioControls({
               exit={{ opacity: 0, y: -6, scale: 0.98 }}
               transition={{ duration: 0.14 }}
               role="listbox"
+              aria-label="Soundtrack"
             >
               <div className="space-y-0.5">
                 {GAME_SOUND_OPTIONS.map((option) => {
@@ -189,11 +246,7 @@ function AudioControls({
                       <span className="font-mono text-[0.62rem] tracking-[0.16em] uppercase sm:text-[0.67rem]">
                         {option.label}
                       </span>
-                      {active && (
-                        <span className="font-mono text-[0.58rem] tracking-[0.14em] text-primary uppercase">
-                          Active
-                        </span>
-                      )}
+                      {active && <Check className="h-3.5 w-3.5 text-primary" />}
                     </button>
                   )
                 })}
@@ -206,91 +259,466 @@ function AudioControls({
   )
 }
 
-// ─── STAT CARD ─────────────────────────────────────────────────────────────
+// ─── SKIP BUTTON ───────────────────────────────────────────────────────────
+// A progress ring counts down SKIP_DELAY_SECONDS, then the button unlocks.
 
-function StatCard({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="relative overflow-hidden rounded-[1rem] border border-border/65 bg-card/65 px-2 py-2.5 text-center shadow-[0_10px_30px_-22px_rgba(0,0,0,0.55)] backdrop-blur-xl sm:rounded-[1.15rem] sm:px-3 sm:py-3">
-      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/25 to-transparent" />
-      <p className="relative font-mono text-[8px] tracking-[0.22em] text-muted-foreground/60 uppercase sm:text-[9px]">
-        {label}
-      </p>
-      <div className="relative mt-1 text-base font-semibold tracking-tight text-foreground sm:mt-1.5 sm:text-xl">
-        {value}
-      </div>
-    </div>
-  )
-}
-
-// ─── CARD SHELL / BACK / FACE ───────────────────────────────────────────────
-
-function CardShell({
-  active,
-  matched,
-  dimmed,
-  children,
+function SkipButton({
+  skip,
+  size = "md",
+  className = "",
 }: {
-  active: boolean
-  matched: boolean
-  dimmed: boolean
-  children: React.ReactNode
+  skip: SkipControl
+  size?: "sm" | "md"
+  className?: string
 }) {
+  const { ready, progress, remaining, onSkip } = skip
+  const sm = size === "sm"
+  const radius = sm ? 9 : 11
+  const center = sm ? 12 : 15
+  const circumference = 2 * Math.PI * radius
+
   return (
-    <div
-      className={`absolute inset-0 overflow-hidden rounded-[0.9rem] border shadow-[0_12px_32px_-24px_rgba(0,0,0,0.68)] transition-all duration-700 sm:rounded-[1.2rem] ${
-        dimmed ? "opacity-30 brightness-50" : "opacity-100"
-      } ${
-        active
-          ? matched
-            ? "border-primary/32 bg-primary/10"
-            : "border-primary/18 bg-primary/6"
-          : "border-border/65 bg-card/55"
+    <button
+      type="button"
+      onClick={onSkip}
+      disabled={!ready}
+      aria-label={
+        ready
+          ? "Skip the game and open the portfolio"
+          : `Skip the game. Available in ${remaining} seconds`
+      }
+      className={`group inline-flex shrink-0 items-center rounded-full border font-medium transition-colors ${focusRing} ${
+        sm
+          ? "gap-2 py-1 pr-3 pl-1 text-xs"
+          : "h-12 gap-2.5 pr-5 pl-2 text-[13px]"
+      } ${className} ${
+        ready
+          ? "border-border/80 bg-card/70 text-foreground hover:bg-card"
+          : "cursor-not-allowed border-border/50 bg-background/30 text-muted-foreground/70"
       }`}
     >
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),transparent_32%,transparent_70%,rgba(255,255,255,0.015))]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.07),transparent_26%)]" />
-      {children}
-    </div>
-  )
-}
-
-function CardBack() {
-  return (
-    <div className="flex h-full w-full items-center justify-center rounded-[0.75rem] border border-dashed border-border/35 bg-[radial-gradient(circle_at_50%_28%,rgba(255,255,255,0.02),transparent_52%)] sm:rounded-[0.9rem]">
-      <div className="grid h-6 w-6 place-items-center rounded-[0.6rem] border border-border/50 bg-card/60 text-muted-foreground sm:h-8 sm:w-8 sm:rounded-[0.7rem]">
-        <Grid2x2 className="h-2.5 w-2.5 opacity-55 sm:h-3 sm:w-3" />
-      </div>
-    </div>
-  )
-}
-
-function CardFace({ card }: { card: Card }) {
-  const Icon = card.Icon
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-1 p-1 text-center sm:gap-1.5 sm:p-2">
-      <div
-        className={`grid h-6 w-6 place-items-center rounded-[0.6rem] border sm:h-10 sm:w-10 sm:rounded-[0.78rem] ${
-          card.matched
-            ? "border-primary/20 bg-primary/9 text-primary"
-            : "border-border/55 bg-background/55 text-foreground"
-        }`}
+      <span
+        className={`relative grid place-items-center ${sm ? "h-6 w-6" : "h-8 w-8"}`}
       >
-        <Icon className="h-2.5 w-2.5 sm:h-4 sm:w-4" />
-      </div>
-      <span className="font-mono text-[6px] leading-none tracking-[0.1em] text-foreground/55 uppercase sm:text-[8px] sm:tracking-[0.14em]">
-        {card.value}
+        <svg
+          viewBox={sm ? "0 0 24 24" : "0 0 30 30"}
+          className="absolute inset-0 -rotate-90"
+          aria-hidden="true"
+        >
+          <circle
+            cx={center}
+            cy={center}
+            r={radius}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className="text-border/70"
+          />
+          <circle
+            cx={center}
+            cy={center}
+            r={radius}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            className="text-primary"
+            strokeDasharray={circumference}
+            strokeDashoffset={circumference * (1 - progress)}
+            style={{ transition: "stroke-dashoffset 120ms linear" }}
+          />
+        </svg>
+        {ready ? (
+          <SkipForward
+            className={`relative text-primary ${sm ? "h-3 w-3" : "h-3.5 w-3.5"}`}
+          />
+        ) : (
+          <span
+            className={`relative font-mono tabular-nums ${sm ? "text-[10px]" : "text-[11px]"}`}
+          >
+            {remaining}
+          </span>
+        )}
       </span>
+      <span>
+        {ready ? (sm ? "Skip" : "Skip game") : `Skip in ${remaining}s`}
+      </span>
+    </button>
+  )
+}
+
+// ─── STAT STRIP ────────────────────────────────────────────────────────────
+
+function StatStrip({
+  moves,
+  time,
+  stars,
+}: {
+  moves: number
+  time: string
+  stars: number
+}) {
+  const cell =
+    "flex items-center justify-center gap-2 px-2 py-2.5 sm:justify-start sm:gap-3 sm:px-4"
+  const label =
+    "text-[10px] leading-none text-muted-foreground/70 sm:text-[11px]"
+  const value =
+    "mt-1 text-sm leading-none font-semibold tracking-tight text-foreground tabular-nums sm:text-base"
+
+  return (
+    <div className="grid grid-cols-3 divide-x divide-border/50 overflow-hidden rounded-[0.9rem] border border-border/55 bg-background/30">
+      <div className={cell}>
+        <MousePointerClick className="h-4 w-4 shrink-0 text-primary" />
+        <div>
+          <p className={label}>Moves</p>
+          <p className={value}>{moves}</p>
+        </div>
+      </div>
+      <div className={cell}>
+        <Timer className="h-4 w-4 shrink-0 text-primary" />
+        <div>
+          <p className={label}>Time</p>
+          <p className={value}>{time}</p>
+        </div>
+      </div>
+      <div className={cell}>
+        <Star className="hidden h-4 w-4 shrink-0 text-primary sm:block" />
+        <div>
+          <p className={label}>Rating</p>
+          <p
+            className={`${value} flex items-center gap-0.5`}
+            role="img"
+            aria-label={`${stars} of 3 stars`}
+          >
+            {[1, 2, 3].map((n) => (
+              <Star
+                key={n}
+                className={`h-3 w-3 transition-colors sm:h-3.5 sm:w-3.5 ${
+                  n <= stars
+                    ? "fill-current text-primary"
+                    : "text-muted-foreground/30"
+                }`}
+              />
+            ))}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── MEMORY CARD ───────────────────────────────────────────────────────────
+// True 3D flip: both faces live in the DOM, the container rotates 180°.
+
+function CornerTicks() {
+  const tick =
+    "absolute h-2 w-2 border-foreground/20 transition-all duration-300"
+  return (
+    <>
+      <span
+        className={`${tick} top-1.5 left-1.5 border-t border-l group-hover:top-1 group-hover:left-1`}
+      />
+      <span
+        className={`${tick} top-1.5 right-1.5 border-t border-r group-hover:top-1 group-hover:right-1`}
+      />
+      <span
+        className={`${tick} bottom-1.5 left-1.5 border-b border-l group-hover:bottom-1 group-hover:left-1`}
+      />
+      <span
+        className={`${tick} right-1.5 bottom-1.5 border-r border-b group-hover:right-1 group-hover:bottom-1`}
+      />
+    </>
+  )
+}
+
+function MemoryCard({
+  card,
+  index,
+  wrong,
+  disabled,
+  canHover,
+  reduceMotion,
+  onFlip,
+}: {
+  card: Card
+  index: number
+  wrong: boolean
+  disabled: boolean
+  canHover: boolean
+  reduceMotion: boolean
+  onFlip: () => void
+}) {
+  const Icon = card.Icon
+  const faceUp = card.flipped || card.matched
+
+  return (
+    <motion.button
+      type="button"
+      className={`group relative aspect-square touch-manipulation rounded-[0.9rem] sm:rounded-[1.1rem] ${focusRing}`}
+      onClick={onFlip}
+      disabled={disabled}
+      whileHover={canHover ? { scale: 1.04 } : undefined}
+      whileTap={canHover ? { scale: 0.97 } : undefined}
+      aria-label={
+        faceUp
+          ? `${card.value}${card.matched ? ", matched" : ""}`
+          : `Card ${index + 1}, face down`
+      }
+    >
+      {/* Entrance (deal-in) */}
+      <motion.div
+        className="absolute inset-0"
+        initial={reduceMotion ? false : { opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{
+          duration: 0.4,
+          delay: reduceMotion ? 0 : index * 0.035,
+          ease: EASE,
+        }}
+      >
+        {/* Perspective + wrong-pair shake */}
+        <motion.div
+          className="absolute inset-0"
+          style={{ perspective: 900 }}
+          animate={wrong ? { x: [0, -5, 5, -4, 4, 0] } : { x: 0 }}
+          transition={
+            wrong
+              ? { duration: 0.4, delay: FLIP_MS / 1000, ease: "easeInOut" }
+              : { duration: 0 }
+          }
+        >
+          {/* The flipper */}
+          <motion.div
+            className="absolute inset-0"
+            style={{ transformStyle: "preserve-3d" }}
+            animate={{ rotateY: faceUp ? 180 : 0 }}
+            transition={{
+              duration: reduceMotion ? 0 : FLIP_MS / 1000,
+              ease: [0.4, 0, 0.2, 1],
+            }}
+          >
+            {/* Back (face down) */}
+            <div
+              className="absolute inset-0 overflow-hidden rounded-[inherit] border border-border/65 bg-card shadow-[0_12px_32px_-24px_rgba(0,0,0,0.68)] transition-colors group-hover:border-border"
+              style={hiddenBackface}
+            >
+              <div
+                className="absolute inset-0"
+                style={{
+                  backgroundImage:
+                    "radial-gradient(color-mix(in oklab, var(--foreground) 16%, transparent) 1px, transparent 1px)",
+                  backgroundSize: "10px 10px",
+                  maskImage:
+                    "radial-gradient(circle at center, black 10%, transparent 72%)",
+                  WebkitMaskImage:
+                    "radial-gradient(circle at center, black 10%, transparent 72%)",
+                }}
+              />
+              <CornerTicks />
+              <span
+                className="absolute inset-0 grid place-items-center text-[1.6rem] leading-none text-foreground/25 transition-colors duration-300 group-hover:text-primary/70 sm:text-[2.4rem]"
+                style={{
+                  fontFamily: "'Bodoni 72', 'Didot', 'Times New Roman', serif",
+                }}
+                aria-hidden="true"
+              >
+                {MONOGRAM}
+              </span>
+            </div>
+
+            {/* Front (face up) */}
+            <div
+              className={`absolute inset-0 rounded-[inherit] border shadow-[0_12px_32px_-24px_rgba(0,0,0,0.68)] transition-colors duration-300 ${
+                card.matched
+                  ? "border-primary/45 bg-primary/10"
+                  : wrong
+                    ? "border-destructive/50 bg-destructive/10"
+                    : "border-primary/25 bg-card"
+              }`}
+              style={{ ...hiddenBackface, transform: "rotateY(180deg)" }}
+            >
+              <div className="absolute inset-0 rounded-[inherit] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent_40%)]" />
+
+              <div className="relative flex h-full flex-col items-center justify-center gap-1.5 p-1 text-center sm:gap-2 sm:p-2">
+                <div
+                  className={`grid h-9 w-9 place-items-center rounded-[0.7rem] border sm:h-12 sm:w-12 sm:rounded-[0.9rem] ${
+                    card.matched
+                      ? "border-primary/30 bg-primary/12 text-primary"
+                      : wrong
+                        ? "border-destructive/30 bg-destructive/10 text-destructive"
+                        : "border-border/55 bg-background/55 text-foreground"
+                  }`}
+                >
+                  <Icon className="h-[18px] w-[18px] sm:h-6 sm:w-6" />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-[10px] leading-tight font-semibold tracking-tight text-foreground sm:text-xs">
+                    {card.value}
+                  </p>
+                  <p className="mt-0.5 hidden text-[10px] leading-none text-muted-foreground/60 sm:block">
+                    {card.tag}
+                  </p>
+                </div>
+              </div>
+
+              {card.matched && (
+                <>
+                  <motion.span
+                    className="absolute top-1 right-1 z-10 grid h-4 w-4 place-items-center rounded-full bg-primary text-primary-foreground sm:top-1.5 sm:right-1.5 sm:h-5 sm:w-5"
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 22 }}
+                  >
+                    <Check
+                      className="h-2.5 w-2.5 sm:h-3 sm:w-3"
+                      strokeWidth={3}
+                    />
+                  </motion.span>
+                  {!reduceMotion && (
+                    <motion.span
+                      className="pointer-events-none absolute inset-0 rounded-[inherit] border-2 border-primary/60"
+                      initial={{ opacity: 0.7, scale: 1 }}
+                      animate={{ opacity: 0, scale: 1.18 }}
+                      transition={{ duration: 0.7, ease: "easeOut" }}
+                    />
+                  )}
+                </>
+              )}
+            </div>
+          </motion.div>
+        </motion.div>
+      </motion.div>
+    </motion.button>
+  )
+}
+
+// ─── MANIFEST (checklist of what to find) ──────────────────────────────────
+
+function ManifestList({
+  matchedValues,
+  matched,
+}: {
+  matchedValues: Set<string>
+  matched: number
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-end justify-between">
+        <div>
+          <h3 className="text-sm font-semibold tracking-tight text-foreground">
+            Stack to find
+          </h3>
+          <p className="mt-0.5 text-xs text-muted-foreground/65">
+            Ticks off as you match
+          </p>
+        </div>
+        <p className="text-sm font-semibold text-foreground tabular-nums">
+          {matched}
+          <span className="font-normal text-muted-foreground/60">
+            {" "}
+            / {CARD_DATA.length}
+          </span>
+        </p>
+      </div>
+
+      <ul className="space-y-1.5">
+        {CARD_DATA.map(({ value, tag, Icon }) => {
+          const found = matchedValues.has(value)
+          return (
+            <li
+              key={value}
+              className={`flex items-center gap-3 rounded-[0.8rem] border px-2.5 py-2 transition-colors duration-300 ${
+                found
+                  ? "border-primary/30 bg-primary/8"
+                  : "border-border/45 bg-background/25"
+              }`}
+            >
+              <span
+                className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors duration-300 ${
+                  found
+                    ? "bg-primary/15 text-primary"
+                    : "bg-muted/50 text-muted-foreground/50"
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p
+                  className={`text-sm leading-tight font-medium transition-colors ${
+                    found ? "text-foreground" : "text-muted-foreground/70"
+                  }`}
+                >
+                  {value}
+                </p>
+                <p className="mt-0.5 text-[11px] leading-none text-muted-foreground/55">
+                  {tag}
+                </p>
+              </div>
+              {found ? (
+                <motion.span
+                  className="grid h-5 w-5 place-items-center rounded-full bg-primary text-primary-foreground"
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: "spring", stiffness: 500, damping: 22 }}
+                >
+                  <Check className="h-3 w-3" strokeWidth={3} />
+                </motion.span>
+              ) : (
+                <span className="h-5 w-5 rounded-full border border-dashed border-border/60" />
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+function ManifestChips({
+  matchedValues,
+  matched,
+}: {
+  matchedValues: Set<string>
+  matched: number
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-[0.9rem] border border-border/50 bg-background/30 px-2.5 py-2">
+      <div className="flex items-center gap-1" aria-hidden="true">
+        {CARD_DATA.map(({ value, Icon }) => {
+          const done = matchedValues.has(value)
+          return (
+            <motion.span
+              key={value}
+              title={value}
+              className={`grid h-7 w-7 place-items-center rounded-lg border transition-colors duration-300 sm:h-8 sm:w-8 ${
+                done
+                  ? "border-primary/30 bg-primary/10 text-primary"
+                  : "border-dashed border-border/50 text-muted-foreground/30"
+              }`}
+              animate={done ? { scale: [1, 1.18, 1] } : { scale: 1 }}
+              transition={{ duration: 0.4 }}
+            >
+              <Icon className="h-3.5 w-3.5" />
+            </motion.span>
+          )
+        })}
+      </div>
+      <p className="shrink-0 text-xs font-medium text-muted-foreground/80 tabular-nums">
+        {matched}/{CARD_DATA.length}
+        <span className="sr-only"> pairs matched</span>
+      </p>
     </div>
   )
 }
 
 // ─── START SCREEN ──────────────────────────────────────────────────────────
+// One centred axis: fanned cards → headline → actions → three-step path → footer.
 
 const staggerContainer = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: { staggerChildren: 0.08, delayChildren: 0.1 },
+    transition: { staggerChildren: 0.09, delayChildren: 0.05 },
   },
 }
 const fadeUp = {
@@ -298,84 +726,278 @@ const fadeUp = {
   visible: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.48, ease: [0.25, 0.46, 0.45, 0.94] },
+    transition: { duration: 0.5, ease: EASE },
   },
+}
+
+const STEPS: Array<{ Icon: LucideIcon; title: string; body: string }> = [
+  {
+    Icon: MousePointerClick,
+    title: "Flip two cards",
+    body: "Tap to reveal the tools underneath.",
+  },
+  {
+    Icon: Target,
+    title: "Match all 8 pairs",
+    body: "Fewer moves earn more stars.",
+  },
+  {
+    Icon: Sparkles,
+    title: "Enter the portfolio",
+    body: "Opens automatically when you finish.",
+  },
+]
+
+// A hand of five cards: two matching pairs flank the locked portfolio card.
+type FanSlot = {
+  x: number
+  y: number
+  r: number
+  z: number
+  kind: "face" | "back"
+  Icon?: LucideIcon
+  label?: string
+  hideOnMobile?: boolean
+}
+
+const FAN: FanSlot[] = [
+  {
+    x: -150,
+    y: 22,
+    r: -14,
+    z: 1,
+    kind: "face",
+    Icon: Atom,
+    label: "React",
+    hideOnMobile: true,
+  },
+  {
+    x: -76,
+    y: 7,
+    r: -7,
+    z: 2,
+    kind: "face",
+    Icon: Braces,
+    label: "TypeScript",
+  },
+  { x: 0, y: 0, r: 0, z: 5, kind: "back" },
+  { x: 76, y: 7, r: 7, z: 2, kind: "face", Icon: Braces, label: "TypeScript" },
+  {
+    x: 150,
+    y: 22,
+    r: 14,
+    z: 1,
+    kind: "face",
+    Icon: Atom,
+    label: "React",
+    hideOnMobile: true,
+  },
+]
+
+const fanVariants: Variants = {
+  stacked: { x: 0, y: 36, rotate: 0, opacity: 0, scale: 0.88 },
+  fanned: (slot: FanSlot) => ({
+    x: slot.x,
+    y: slot.y,
+    rotate: slot.r,
+    opacity: 1,
+    scale: 1,
+    transition: {
+      type: "spring",
+      stiffness: 130,
+      damping: 15,
+      delay: 0.3 + Math.abs(slot.x) / 420,
+    },
+  }),
+  spread: (slot: FanSlot) => ({
+    x: slot.x * 1.22,
+    y: slot.y * 1.1,
+    rotate: slot.r * 1.3,
+    opacity: 1,
+    scale: 1,
+    transition: { type: "spring", stiffness: 260, damping: 20 },
+  }),
+}
+
+function FanCard({
+  slot,
+  reduceMotion,
+}: {
+  slot: FanSlot
+  reduceMotion: boolean
+}) {
+  const Icon = slot.Icon
+
+  return (
+    <motion.div
+      custom={slot}
+      variants={fanVariants}
+      style={{ zIndex: slot.z }}
+      className={`absolute top-0 left-1/2 -ml-10 h-[112px] w-20 sm:-ml-[44px] sm:h-[124px] sm:w-[88px] ${
+        slot.hideOnMobile ? "hidden sm:block" : ""
+      }`}
+    >
+      <motion.div
+        className="h-full w-full"
+        animate={
+          slot.kind === "back" && !reduceMotion ? { y: [0, -5, 0] } : undefined
+        }
+        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+      >
+        {slot.kind === "face" && Icon ? (
+          <div className="relative flex h-full w-full flex-col items-center justify-center gap-2.5 overflow-hidden rounded-[1rem] border border-border/70 bg-card shadow-[0_20px_44px_-22px_rgba(0,0,0,0.8)]">
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),transparent_45%)]" />
+            <span className="relative grid h-10 w-10 place-items-center rounded-[0.75rem] border border-border/55 bg-background/60 text-foreground">
+              <Icon className="h-5 w-5" />
+            </span>
+            <span className="relative text-[11px] leading-none font-semibold tracking-tight text-foreground/85">
+              {slot.label}
+            </span>
+          </div>
+        ) : (
+          <div className="group relative h-full w-full overflow-hidden rounded-[1rem] border border-primary/40 bg-card shadow-[0_24px_60px_-18px_color-mix(in_oklab,var(--primary)_55%,transparent)]">
+            <div
+              className="absolute inset-0"
+              style={{
+                backgroundImage:
+                  "radial-gradient(color-mix(in oklab, var(--foreground) 18%, transparent) 1px, transparent 1px)",
+                backgroundSize: "9px 9px",
+                maskImage:
+                  "radial-gradient(circle at center, black 5%, transparent 75%)",
+                WebkitMaskImage:
+                  "radial-gradient(circle at center, black 5%, transparent 75%)",
+              }}
+            />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,color-mix(in_oklab,var(--primary)_16%,transparent),transparent_65%)]" />
+            <span
+              className="absolute inset-x-0 top-[26%] text-center text-[2.6rem] leading-none text-foreground/80 sm:text-[3rem]"
+              style={{ fontFamily: DISPLAY_FONT }}
+              aria-hidden="true"
+            >
+              {MONOGRAM}
+            </span>
+            <span className="absolute inset-x-0 bottom-3 flex justify-center text-primary/90">
+              <Lock className="h-3.5 w-3.5" />
+            </span>
+          </div>
+        )}
+      </motion.div>
+    </motion.div>
+  )
+}
+
+function CardFan({ reduceMotion }: { reduceMotion: boolean }) {
+  return (
+    <motion.div
+      className="relative mx-auto h-[150px] w-full sm:h-[176px]"
+      initial={reduceMotion ? "fanned" : "stacked"}
+      animate="fanned"
+      whileHover={reduceMotion ? undefined : "spread"}
+      aria-hidden="true"
+    >
+      {FAN.map((slot, i) => (
+        <FanCard key={i} slot={slot} reduceMotion={reduceMotion} />
+      ))}
+    </motion.div>
+  )
 }
 
 function StartScreen({
   gameSound,
   gameMutedState,
   onStart,
+  skip,
   prefersReducedMotion,
 }: {
   gameSound: string
   gameMutedState: boolean
   onStart: () => void
+  skip: SkipControl
   prefersReducedMotion: boolean | null
 }) {
+  const reduceMotion = Boolean(prefersReducedMotion)
   const currentTrack =
     GAME_SOUND_OPTIONS.find((i) => i.value === gameSound)?.label ?? "Pulse"
 
   return (
     <motion.div
       key="start"
-      className="relative w-full max-w-[680px] overflow-hidden rounded-[1.75rem] border border-border/60 bg-card/40 shadow-[0_32px_80px_-48px_rgba(0,0,0,0.65)] backdrop-blur-2xl"
+      className="relative w-full max-w-[640px] overflow-hidden rounded-[2rem] border border-border/60 bg-card/40 shadow-[0_32px_80px_-48px_rgba(0,0,0,0.65)] backdrop-blur-2xl"
       initial={{ opacity: 0, scale: 0.985, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.985, y: -6 }}
       transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
     >
-      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/28 to-transparent" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_55%_35%_at_20%_0%,rgba(255,108,47,0.065),transparent_55%),radial-gradient(ellipse_35%_25%_at_82%_95%,rgba(255,255,255,0.018),transparent_50%)]" />
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
 
-      <div className="relative grid divide-y divide-border/40 sm:grid-cols-[1.1fr_0.9fr] sm:divide-x sm:divide-y-0">
-        <motion.div
-          className="flex flex-col gap-6 px-6 py-7 sm:px-7 sm:py-8"
-          variants={staggerContainer}
-          initial="hidden"
-          animate="visible"
-        >
-          <motion.div variants={fadeUp}>
-            <div className="inline-flex items-center gap-2 rounded-full border border-primary/13 bg-primary/6 px-3.5 py-1.5">
-              <motion.div
-                className="h-1.5 w-1.5 rounded-full bg-primary"
-                animate={
-                  prefersReducedMotion
-                    ? undefined
-                    : { scale: [1, 1.55, 1], opacity: [0.45, 1, 0.45] }
-                }
-                transition={{ duration: 1.9, repeat: Infinity }}
-              />
-              <span className="font-mono text-[8px] tracking-[0.26em] text-primary/70 uppercase sm:text-[9px]">
-                Memory Protocol
-              </span>
-            </div>
-          </motion.div>
+      {/* Atmosphere: a warm pool of light behind the cards + a faint grid, echoing the intro */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse 62% 36% at 50% 20%, color-mix(in oklab, var(--primary) 15%, transparent), transparent 70%)",
+        }}
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 opacity-[0.035]"
+        style={{
+          backgroundImage:
+            "linear-gradient(to right, currentColor 1px, transparent 1px), linear-gradient(to bottom, currentColor 1px, transparent 1px)",
+          backgroundSize: "56px 56px",
+          maskImage:
+            "radial-gradient(ellipse at 50% 30%, black, transparent 72%)",
+          WebkitMaskImage:
+            "radial-gradient(ellipse at 50% 30%, black, transparent 72%)",
+        }}
+      />
 
-          <motion.div className="space-y-2.5" variants={fadeUp}>
-            <p className="font-mono text-[8px] tracking-[0.34em] text-muted-foreground/38 uppercase sm:text-[9px]">
-              Secure challenge interface
-            </p>
-            <h3 className="text-[clamp(1.75rem,4vw,2.65rem)] leading-[1.08] font-semibold tracking-[-0.05em] text-foreground">
-              Prove your
-              <br />
-              <span className="bg-gradient-to-r from-primary via-primary/85 to-primary/45 bg-clip-text text-transparent">
-                pattern recall.
-              </span>
-            </h3>
-            <p className="max-w-[28ch] text-sm leading-[1.65] text-muted-foreground/55">
-              Identify and match all 8 tech stack pairs to unlock the portfolio.
-            </p>
-          </motion.div>
+      <motion.div
+        className="relative flex flex-col items-center px-5 pt-7 pb-9 text-center sm:px-10 sm:pt-9 sm:pb-10"
+        variants={staggerContainer}
+        initial="hidden"
+        animate="visible"
+      >
+        <motion.div variants={fadeUp}>
+          <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/8 py-1.5 pr-3.5 pl-2.5 text-primary/80">
+            <Brain className="h-3.5 w-3.5" />
+            <span className="text-xs font-medium">
+              Quick challenge · about a minute
+            </span>
+          </div>
+        </motion.div>
 
-          <motion.div
-            variants={fadeUp}
-            className="relative inline-block self-start"
+        <motion.div variants={fadeUp} className="mt-8 w-full">
+          <CardFan reduceMotion={reduceMotion} />
+        </motion.div>
+
+        <motion.div variants={fadeUp} className="mt-9 space-y-3.5">
+          <h3
+            className="text-[clamp(1.85rem,7vw,3.25rem)] leading-[1.04] font-normal tracking-[-0.02em] text-foreground"
+            style={{ fontFamily: DISPLAY_FONT }}
           >
+            Match the stack,
+            <br />
+            <span className="text-muted-foreground/60 italic">
+              unlock the portfolio.
+            </span>
+          </h3>
+          <p className="mx-auto max-w-[42ch] text-sm leading-relaxed text-muted-foreground/70">
+            Find all 8 pairs of tools I work with. Not in the mood? You can skip
+            ahead in {SKIP_DELAY_SECONDS} seconds.
+          </p>
+        </motion.div>
+
+        <motion.div
+          variants={fadeUp}
+          className="mt-8 flex w-full flex-col items-stretch justify-center gap-3 sm:w-auto sm:flex-row sm:items-center"
+        >
+          <div className="relative">
             <motion.div
               className="absolute inset-[-3px] rounded-full"
               animate={
-                prefersReducedMotion
+                reduceMotion
                   ? undefined
                   : {
                       boxShadow: [
@@ -392,9 +1014,10 @@ function StartScreen({
               }}
             />
             <motion.button
-              className="group relative overflow-hidden rounded-full border border-primary/16 bg-primary px-7 py-3 text-[13px] font-semibold tracking-[0.09em] text-primary-foreground shadow-[0_14px_40px_-18px_rgba(255,108,47,0.48)] sm:py-3.5"
-              whileHover={prefersReducedMotion ? undefined : { scale: 1.022 }}
-              whileTap={prefersReducedMotion ? undefined : { scale: 0.978 }}
+              type="button"
+              className={`group relative flex h-12 w-full items-center justify-center overflow-hidden rounded-full border border-primary/16 bg-primary px-8 text-[13px] font-semibold tracking-wide text-primary-foreground shadow-[0_14px_40px_-18px_rgba(255,108,47,0.48)] sm:w-auto ${focusRing}`}
+              whileHover={reduceMotion ? undefined : { scale: 1.022 }}
+              whileTap={reduceMotion ? undefined : { scale: 0.978 }}
               onClick={onStart}
               onHoverStart={() => playButtonHover()}
             >
@@ -405,134 +1028,144 @@ function StartScreen({
                 whileHover={{ x: "110%" }}
                 transition={{ duration: 0.5, ease: "easeInOut" }}
               />
-              <span className="relative inline-flex items-center gap-2.5">
-                <span>START GAME</span>
-                <Gamepad2 className="h-3.5 w-3.5" />
+              <span className="relative inline-flex items-center gap-2">
+                <Play className="h-3.5 w-3.5 fill-current" />
+                <span>Start game</span>
               </span>
             </motion.button>
-          </motion.div>
+          </div>
+
+          <SkipButton skip={skip} className="justify-center sm:justify-start" />
         </motion.div>
 
-        <motion.div
-          className="flex flex-col gap-4 px-6 py-7 sm:px-6 sm:py-8"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2, duration: 0.45 }}
+        {/* Three-step path: equal columns, one dashed line through the icon centres */}
+        <motion.ol
+          variants={fadeUp}
+          className="relative mt-11 grid w-full grid-cols-3 gap-2 sm:gap-4"
         >
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="h-3 w-3 text-primary/55" />
-            <span className="font-mono text-[7.5px] tracking-[0.26em] text-muted-foreground/38 uppercase sm:text-[8px]">
-              Session readout
-            </span>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <div className="flex flex-col gap-1.5 rounded-[1rem] border border-border/50 bg-background/28 px-4 py-3">
-              <p className="font-mono text-[7px] tracking-[0.26em] text-muted-foreground/32 uppercase sm:text-[7.5px]">
-                Soundtrack
-              </p>
-              <p className="text-sm font-medium text-foreground/75">
-                {currentTrack}
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-1.5 rounded-[1rem] border border-border/50 bg-background/28 px-4 py-3">
-              <p className="font-mono text-[7px] tracking-[0.26em] text-muted-foreground/32 uppercase sm:text-[7.5px]">
-                Audio
-              </p>
-              <p
-                className={`text-sm font-medium ${
-                  gameMutedState
-                    ? "text-muted-foreground/50"
-                    : "text-primary/75"
-                }`}
-              >
-                {gameMutedState ? "Muted" : "Armed"}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between rounded-[1rem] border border-border/50 bg-background/28 px-4 py-3">
-            <p className="font-mono text-[7px] tracking-[0.26em] text-muted-foreground/32 uppercase sm:text-[7.5px]">
-              Objective
-            </p>
-            <div className="flex items-center gap-1.5 rounded-full border border-primary/14 bg-primary/6 px-2.5 py-1">
-              <motion.div
-                className="h-1 w-1 rounded-full bg-primary"
-                animate={
-                  prefersReducedMotion ? undefined : { opacity: [0.4, 1, 0.4] }
-                }
-                transition={{ duration: 1.7, repeat: Infinity }}
-              />
-              <span className="font-mono text-[7px] tracking-[0.2em] text-primary/60 uppercase sm:text-[7.5px]">
-                8 pairs
+          <div
+            aria-hidden="true"
+            className="absolute top-5 right-[16.66%] left-[16.66%] border-t border-dashed border-border/70"
+          />
+          {STEPS.map(({ Icon, title, body }) => (
+            <li
+              key={title}
+              className="relative z-10 flex flex-col items-center gap-3"
+            >
+              <span className="grid h-10 w-10 place-items-center rounded-full border border-border/70 bg-background text-primary shadow-[0_8px_20px_-12px_rgba(0,0,0,0.6)]">
+                <Icon className="h-[18px] w-[18px]" />
               </span>
-            </div>
-          </div>
-
-          <div className="space-y-1.5 pt-0.5">
-            <div className="flex items-center gap-1">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="h-0.5 flex-1 rounded-full bg-border/45"
-                />
-              ))}
-            </div>
-            <p className="font-mono text-[7px] tracking-[0.2em] text-muted-foreground/25 uppercase sm:text-[7.5px]">
-              0 / 8 matched
-            </p>
-          </div>
-        </motion.div>
-      </div>
-
-      <div className="flex items-center justify-between border-t border-border/32 px-6 py-3.5 sm:px-7">
-        <p className="font-mono text-[7px] tracking-[0.2em] text-muted-foreground/25 uppercase sm:text-[7.5px]">
-          Portfolio locked · challenge required
-        </p>
-        <motion.div
-          className="flex items-center gap-1"
-          animate={
-            prefersReducedMotion ? undefined : { opacity: [0.3, 0.65, 0.3] }
-          }
-          transition={{ duration: 3.8, repeat: Infinity }}
-        >
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-0.5 w-3 rounded-full bg-border/50" />
+              <div className="max-w-[18ch] sm:max-w-[22ch]">
+                <p className="text-[13px] leading-tight font-medium text-foreground">
+                  {title}
+                </p>
+                <p className="mt-1.5 hidden text-xs leading-snug text-muted-foreground/65 sm:block">
+                  {body}
+                </p>
+              </div>
+            </li>
           ))}
-        </motion.div>
+        </motion.ol>
+      </motion.div>
+
+      {/* Footer: lock note on the left, sound status on the right */}
+      <div className="relative flex flex-col items-center gap-2 border-t border-border/35 px-5 py-3.5 text-xs text-muted-foreground/60 sm:flex-row sm:justify-between sm:px-8">
+        <span className="inline-flex items-center gap-2">
+          <Lock className="h-3 w-3 shrink-0" />
+          Portfolio unlocks when you finish, or skip.
+        </span>
+        <span className="inline-flex items-center gap-2.5">
+          <span className="inline-flex items-center gap-1.5">
+            <Music2 className="h-3 w-3" />
+            {currentTrack}
+          </span>
+          <span className="h-3 w-px bg-border/70" aria-hidden="true" />
+          <span
+            className={`inline-flex items-center gap-1.5 ${
+              gameMutedState ? "" : "text-primary/80"
+            }`}
+          >
+            {gameMutedState ? (
+              <VolumeX className="h-3 w-3" />
+            ) : (
+              <Volume2 className="h-3 w-3" />
+            )}
+            {gameMutedState ? "Muted" : "Sound on"}
+          </span>
+        </span>
       </div>
     </motion.div>
   )
 }
 
-// ─── MINIMAL VALIDATION OVERLAY ────────────────────────────────────────────
+// ─── WIN OVERLAY ───────────────────────────────────────────────────────────
+// Only shown when the player actually completes the game. Skipping has no overlay.
 
-function UnlockOverlay({
-  onComplete,
+function WinOverlay({
   prefersReducedMotion,
 }: {
-  onComplete: () => void
   prefersReducedMotion: boolean | null
 }) {
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      onComplete()
-    }, 1100)
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 grid place-items-center bg-background/75 px-6 backdrop-blur-md"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.25 }}
+      role="status"
+      aria-live="polite"
+    >
+      <motion.div
+        className="flex flex-col items-center gap-5 text-center"
+        initial={{ opacity: 0, y: 10, scale: 0.96 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.4, ease: EASE }}
+      >
+        <div className="relative grid h-16 w-16 place-items-center rounded-full border border-primary/25 bg-primary/10 text-primary">
+          {!prefersReducedMotion && (
+            <motion.span
+              className="absolute inset-0 rounded-full border border-primary/35"
+              initial={{ scale: 1, opacity: 0.6 }}
+              animate={{ scale: 1.7, opacity: 0 }}
+              transition={{ duration: 1.2, ease: "easeOut", repeat: Infinity }}
+            />
+          )}
+          <Check className="h-6 w-6" strokeWidth={2.5} />
+        </div>
 
-    return () => window.clearTimeout(timer)
-  }, [onComplete])
+        <div className="space-y-1">
+          <p className="text-lg font-semibold tracking-tight text-foreground">
+            Challenge complete
+          </p>
+          <p className="text-sm text-muted-foreground/70">
+            Unlocking the portfolio…
+          </p>
+        </div>
 
- 
+        <div className="h-0.5 w-44 overflow-hidden rounded-full bg-border/60">
+          <motion.div
+            className="h-full origin-left bg-primary"
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: 1 }}
+            transition={{ duration: WIN_OVERLAY_MS / 1000, ease: "linear" }}
+          />
+        </div>
+      </motion.div>
+    </motion.div>
+  )
 }
 
 // ─── MAIN EXPORT ───────────────────────────────────────────────────────────
 
 export default function MemoryGame({ onComplete }: MemoryGameProps) {
   const prefersReducedMotion = useReducedMotion()
+  const reduceMotion = Boolean(prefersReducedMotion)
 
   const [cards, setCards] = useState<Card[]>([])
   const [selected, setSelected] = useState<number[]>([])
+  const [wrongPair, setWrongPair] = useState<number[]>([])
+  const [dealKey, setDealKey] = useState(0)
   const [moves, setMoves] = useState(0)
   const [seconds, setSeconds] = useState(0)
   const [matched, setMatched] = useState(0)
@@ -541,15 +1174,19 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
   const [skipCodeInput, setSkipCodeInput] = useState("")
   const [gameMutedState, setGameMutedState] = useState(() => getGameMuted())
   const [gameSound, setGameSoundState] = useState(() => getCurrentGameSound())
-  const [showUnlock, setShowUnlock] = useState(false)
+  const [showWin, setShowWin] = useState(false)
+  const [skipElapsed, setSkipElapsed] = useState(0)
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const matchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const unlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const skipCodeRef = useRef("")
   const musicStartSyncedRef = useRef(false)
   const cardsRef = useRef<Card[]>([])
-  const completionCallbackFiredRef = useRef(false)
+  const unlockedRef = useRef(false)
+  const completionFiredRef = useRef(false)
+  const onCompleteRef = useRef(onComplete)
+
+  const gameComplete = matched === CARD_DATA.length
 
   const stars = useMemo(() => {
     if (moves <= 14) return 3
@@ -557,7 +1194,15 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
     return 1
   }, [moves])
 
-  const gameComplete = matched === CARD_DATA.length
+  const matchedValues = useMemo(
+    () => new Set(cards.filter((c) => c.matched).map((c) => c.value)),
+    [cards]
+  )
+
+  // Keep the latest callback without restarting timers.
+  useEffect(() => {
+    onCompleteRef.current = onComplete
+  }, [onComplete])
 
   useEffect(() => {
     setCards(createDeck())
@@ -567,6 +1212,52 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
     cardsRef.current = cards
   }, [cards])
 
+  // Fires the parent callback exactly once.
+  const finish = useCallback(() => {
+    if (completionFiredRef.current) return
+    completionFiredRef.current = true
+    onCompleteRef.current()
+  }, [])
+
+  // Win path: show the short celebration overlay, then hand off.
+  const unlock = useCallback(() => {
+    if (unlockedRef.current) return
+    unlockedRef.current = true
+    setLockBoard(true)
+    setSelected([])
+    setShowWin(true)
+  }, [])
+
+  // Skip path: no overlay, no animation, straight to the portfolio.
+  const skipGame = useCallback(() => {
+    if (unlockedRef.current) return
+    unlockedRef.current = true
+    setLockBoard(true)
+    finish()
+  }, [finish])
+
+  // ── Skip countdown: starts when the game screen mounts ──
+  useEffect(() => {
+    const start = performance.now()
+    const id = window.setInterval(() => {
+      const elapsed = Math.min(performance.now() - start, SKIP_DELAY_MS)
+      setSkipElapsed(elapsed)
+      if (elapsed >= SKIP_DELAY_MS) window.clearInterval(id)
+    }, 100)
+    return () => window.clearInterval(id)
+  }, [])
+
+  const skipReady = skipElapsed >= SKIP_DELAY_MS
+  const skipControl: SkipControl = {
+    ready: skipReady,
+    progress: skipElapsed / SKIP_DELAY_MS,
+    remaining: Math.max(1, Math.ceil((SKIP_DELAY_MS - skipElapsed) / 1000)),
+    onSkip: () => {
+      if (skipReady) skipGame()
+    },
+  }
+
+  // ── Game clock ──
   useEffect(() => {
     if (!gameStarted || gameComplete) return
     timerRef.current = setInterval(() => {
@@ -589,6 +1280,7 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
     void switchGameMusic(gameSound)
   }, [gameStarted, gameSound])
 
+  // ── Pair resolution ──
   useEffect(() => {
     if (selected.length !== 2) return
     const [firstIndex, secondIndex] = selected
@@ -607,8 +1299,8 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
     const isMatch = firstCard.value === secondCard.value
 
     if (isMatch) {
-      playMatchSuccess()
       matchTimeoutRef.current = setTimeout(() => {
+        playMatchSuccess()
         setCards((prev) =>
           prev.map((card) =>
             card.value === firstCard.value ? { ...card, matched: true } : card
@@ -617,8 +1309,10 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
         setMatched((c) => c + 1)
         setSelected([])
         setLockBoard(false)
-      }, 260)
+      }, MATCH_SETTLE_MS)
     } else {
+      setWrongPair([firstIndex, secondIndex])
+      // Wait for the flip to finish, then give the player time to read both cards.
       matchTimeoutRef.current = setTimeout(() => {
         setCards((prev) =>
           prev.map((card, index) =>
@@ -627,9 +1321,10 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
               : card
           )
         )
+        setWrongPair([])
         setSelected([])
         setLockBoard(false)
-      }, 420)
+      }, FLIP_MS + MISMATCH_VIEW_MS)
     }
 
     setMoves((c) => c + 1)
@@ -642,50 +1337,38 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
     }
   }, [selected])
 
+  // ── Secret code: type "jeydu" anywhere to unlock instantly ──
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase()
-      if (!/[a-z]/.test(key)) return
+      if (!/^[a-z]$/.test(key)) return
       skipCodeRef.current = (skipCodeRef.current + key).slice(-5)
       setSkipCodeInput(skipCodeRef.current)
       if (skipCodeRef.current === "jeydu") {
         playMatchSuccess()
-        setMatched(CARD_DATA.length)
+        unlock()
       }
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [])
+  }, [unlock])
 
+  // ── Win condition ──
   useEffect(() => {
-    if (!gameStarted || !gameComplete) return
+    if (gameStarted && gameComplete) unlock()
+  }, [gameStarted, gameComplete, unlock])
 
-    setLockBoard(true)
-    setSelected([])
-    setShowUnlock(true)
-
-    return () => {
-      if (unlockTimerRef.current) clearTimeout(unlockTimerRef.current)
-    }
-  }, [gameStarted, gameComplete])
-
+  // ── Win hand-off: let the overlay play, then tell the parent ──
   useEffect(() => {
-    if (!showUnlock || completionCallbackFiredRef.current) return
-    unlockTimerRef.current = setTimeout(() => {
-      completionCallbackFiredRef.current = true
-      onComplete()
-    }, 1100)
-
-    return () => {
-      if (unlockTimerRef.current) clearTimeout(unlockTimerRef.current)
-    }
-  }, [showUnlock, onComplete])
+    if (!showWin) return
+    const timer = window.setTimeout(finish, WIN_OVERLAY_MS)
+    return () => window.clearTimeout(timer)
+  }, [showWin, finish])
 
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
       if (matchTimeoutRef.current) clearTimeout(matchTimeoutRef.current)
-      if (unlockTimerRef.current) clearTimeout(unlockTimerRef.current)
       void stopGameMusic(0)
     }
   }, [])
@@ -693,6 +1376,23 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
   const startGame = () => {
     setGameStarted(true)
     void playGameMusic(gameSound)
+  }
+
+  const restartGame = () => {
+    if (showWin || unlockedRef.current) return
+    if (matchTimeoutRef.current) {
+      clearTimeout(matchTimeoutRef.current)
+      matchTimeoutRef.current = null
+    }
+    setCards(createDeck())
+    setSelected([])
+    setWrongPair([])
+    setMoves(0)
+    setSeconds(0)
+    setMatched(0)
+    setLockBoard(false)
+    // Remount the board so every card is dealt face-down (no peeking mid-flip).
+    setDealKey((k) => k + 1)
   }
 
   const handleMuteToggle = () => {
@@ -703,14 +1403,14 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
 
   const handleSoundChange = (next: string) => {
     const valid = GAME_SOUND_OPTIONS.some((o) => o.value === next)
-      ? (next as "game-sound" | "game-sound2" | "game-sound3" | "game-sound4")
+      ? (next as "game-sound" | "game-sound" | "game-sound3" | "game-sound4")
       : "game-sound"
     setGameSoundState(valid)
     setGameSound(valid)
   }
 
   const flipCard = (index: number) => {
-    if (!gameStarted || lockBoard || gameComplete || showUnlock) return
+    if (!gameStarted || lockBoard || gameComplete || showWin) return
     const card = cards[index]
     if (card.flipped || card.matched || selected.includes(index)) return
     playCardFlip()
@@ -727,7 +1427,7 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
 
   return (
     <motion.div
-      className="min-h-[100svh] w-full overflow-hidden bg-background"
+      className="relative min-h-[100svh] w-full overflow-hidden bg-background"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.38 }}
@@ -739,16 +1439,7 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
         onSoundChange={handleSoundChange}
       />
 
-      <div className="relative z-10 flex min-h-[100svh] flex-col items-center justify-center px-3 pt-14 pb-4 sm:px-5 sm:pt-18 sm:pb-5">
-        <motion.p
-          className="mb-4 font-mono text-[8px] tracking-[0.26em] text-primary/55 uppercase sm:mb-5 sm:text-[9px]"
-          initial={{ opacity: 0, y: -6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-        >
-          Match all pairs to unlock the portfolio
-        </motion.p>
-
+      <div className="relative z-10 flex min-h-[100svh] flex-col items-center justify-center px-3 pt-16 pb-5 sm:px-5 sm:pt-20">
         <AnimatePresence mode="wait">
           {!gameStarted ? (
             <StartScreen
@@ -756,137 +1447,132 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
               gameSound={gameSound}
               gameMutedState={gameMutedState}
               onStart={startGame}
+              skip={skipControl}
               prefersReducedMotion={prefersReducedMotion}
             />
           ) : (
-            <motion.div
+            <motion.section
               key="game"
-              className={`w-full max-w-[380px] space-y-2.5 sm:max-w-[520px] sm:space-y-3 ${
-                showUnlock ? "pointer-events-none" : ""
+              aria-label="Memory game"
+              className={`relative w-full max-w-[420px] overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/40 shadow-[0_32px_80px_-48px_rgba(0,0,0,0.65)] backdrop-blur-2xl sm:max-w-[560px] lg:max-w-[920px] lg:rounded-[1.75rem] ${
+                showWin ? "pointer-events-none" : ""
               }`}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{
-                opacity: gameComplete ? 0.72 : 1,
-                y: 0,
-                scale: gameComplete ? 0.995 : 1,
-              }}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: showWin ? 0.5 : 1, y: 0 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.28 }}
-              style={{
-                filter: gameComplete ? "blur(0.9px)" : "none",
-              }}
+              transition={{ duration: 0.3 }}
             >
-              <div className="grid grid-cols-3 gap-1.5 rounded-[1rem] border border-border/45 bg-card/30 p-1.5 backdrop-blur-xl sm:gap-2 sm:rounded-[1.15rem] sm:p-2">
-                <StatCard label="Moves" value={moves} />
-                <StatCard label="Time" value={formatTime(seconds)} />
-                <StatCard
-                  label="Stars"
-                  value={
-                    <motion.span
-                      className="text-xs sm:text-sm"
-                      animate={
-                        prefersReducedMotion
-                          ? undefined
-                          : { scale: [1, 1.05, 1] }
-                      }
-                      transition={{ duration: 1.6, repeat: Infinity }}
-                    >
-                      {"⭐".repeat(stars)}
-                    </motion.span>
-                  }
-                />
-              </div>
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/28 to-transparent" />
 
-              <div className="grid grid-cols-4 gap-1 sm:gap-1.5">
-                {cards.map((card, index) => {
-                  const isActive = card.flipped || card.matched
-                  return (
-                    <motion.button
-                      key={card.id}
-                      type="button"
-                      className="group relative aspect-square touch-manipulation"
-                      onClick={() => flipCard(index)}
-                      whileHover={
-                        prefersReducedMotion || showUnlock
-                          ? undefined
-                          : {
-                              scale:
-                                !lockBoard && !card.flipped && !card.matched
-                                  ? 1.03
-                                  : 1,
-                            }
-                      }
-                      whileTap={
-                        prefersReducedMotion || showUnlock
-                          ? undefined
-                          : {
-                              scale:
-                                !lockBoard && !card.flipped && !card.matched
-                                  ? 0.97
-                                  : 1,
-                            }
-                      }
-                      disabled={
-                        lockBoard || card.matched || card.flipped || showUnlock
-                      }
-                      aria-label={`Card ${index + 1}`}
-                    >
-                      <CardShell
-                        active={isActive}
-                        matched={card.matched}
-                        dimmed={showUnlock}
-                      >
-                        <AnimatePresence mode="wait">
-                          {isActive ? (
-                            <motion.div
-                              key="front"
-                              className="h-full"
-                              initial={{
-                                opacity: 0,
-                                rotateY: -75,
-                                scale: 0.93,
-                              }}
-                              animate={{ opacity: 1, rotateY: 0, scale: 1 }}
-                              exit={{ opacity: 0, rotateY: 75, scale: 0.93 }}
-                              transition={{ duration: 0.26, ease: "easeOut" }}
-                            >
-                              <CardFace card={card} />
-                            </motion.div>
-                          ) : (
-                            <motion.div
-                              key="back"
-                              className="h-full p-1 sm:p-1.5"
-                              initial={{ opacity: 0, rotateY: 75, scale: 0.93 }}
-                              animate={{ opacity: 1, rotateY: 0, scale: 1 }}
-                              exit={{ opacity: 0, rotateY: -75, scale: 0.93 }}
-                              transition={{ duration: 0.26, ease: "easeOut" }}
-                            >
-                              <CardBack />
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </CardShell>
-                    </motion.button>
-                  )
-                })}
-              </div>
+              {/* Header: title, restart, skip. The bottom edge doubles as progress. */}
+              <header className="relative flex items-center justify-between gap-3 border-b border-border/50 px-3.5 py-3 sm:px-5">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[0.7rem] bg-primary/10 text-primary">
+                    <Brain className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <h2 className="truncate text-sm leading-tight font-semibold tracking-tight text-foreground">
+                      Match the stack
+                    </h2>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground/70">
+                      <span className="sm:hidden">
+                        {matched} of {CARD_DATA.length} pairs found
+                      </span>
+                      <span className="hidden sm:inline">
+                        Find all {CARD_DATA.length} pairs to unlock the
+                        portfolio
+                      </span>
+                    </p>
+                  </div>
+                </div>
 
-              <div className="space-y-1">
-                <div className="h-0.5 overflow-hidden rounded-full bg-border/50">
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={restartGame}
+                    disabled={showWin}
+                    className={`grid h-8 w-8 place-items-center rounded-full border border-border/60 bg-card/60 text-muted-foreground transition-colors hover:bg-card hover:text-foreground ${focusRing}`}
+                    aria-label="Restart game"
+                    title="Restart"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  </button>
+                  <SkipButton skip={skipControl} size="sm" />
+                </div>
+
+                <div className="absolute inset-x-0 -bottom-px h-[2px] bg-transparent">
                   <motion.div
-                    className="h-full bg-gradient-to-r from-primary via-primary/80 to-primary/50"
-                    initial={{ width: "0%" }}
+                    className="h-full bg-primary"
+                    initial={false}
                     animate={{
                       width: `${(matched / CARD_DATA.length) * 100}%`,
                     }}
-                    transition={{ duration: 0.3 }}
+                    transition={{ duration: 0.4, ease: EASE }}
                   />
                 </div>
-                <p className="text-center font-mono text-[7px] text-muted-foreground/50 sm:text-[8px]">
-                  {matched} / {CARD_DATA.length} pairs matched
-                </p>
+              </header>
+
+              <div className="grid lg:grid-cols-[minmax(0,1fr)_290px]">
+                {/* Board column */}
+                <div className="p-3 sm:p-5 lg:p-6">
+                  <div className="mx-auto flex w-full max-w-[520px] flex-col gap-3 sm:gap-4">
+                    <StatStrip
+                      moves={moves}
+                      time={formatTime(seconds)}
+                      stars={stars}
+                    />
+
+                    <div
+                      key={dealKey}
+                      className="grid grid-cols-4 gap-1.5 sm:gap-2.5"
+                    >
+                      {cards.map((card, index) => (
+                        <MemoryCard
+                          key={card.id}
+                          card={card}
+                          index={index}
+                          wrong={wrongPair.includes(index)}
+                          reduceMotion={reduceMotion}
+                          disabled={
+                            lockBoard || card.matched || card.flipped || showWin
+                          }
+                          canHover={
+                            !reduceMotion &&
+                            !showWin &&
+                            !lockBoard &&
+                            !card.flipped &&
+                            !card.matched
+                          }
+                          onFlip={() => flipCard(index)}
+                        />
+                      ))}
+                    </div>
+
+                    {/* Small screens: compact checklist under the board */}
+                    <div className="lg:hidden">
+                      <ManifestChips
+                        matchedValues={matchedValues}
+                        matched={matched}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Large screens: full checklist sidebar */}
+                <aside className="hidden flex-col gap-5 border-l border-border/50 bg-background/20 p-5 lg:flex">
+                  <ManifestList
+                    matchedValues={matchedValues}
+                    matched={matched}
+                  />
+                  <div className="mt-auto flex items-start gap-2.5 rounded-[0.8rem] border border-border/45 bg-card/40 p-3">
+                    <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                    <p className="text-xs leading-relaxed text-muted-foreground/75">
+                      Three stars for 14 moves or fewer, two for up to 20.
+                    </p>
+                  </div>
+                </aside>
               </div>
-            </motion.div>
+            </motion.section>
           )}
         </AnimatePresence>
 
@@ -894,12 +1580,8 @@ export default function MemoryGame({ onComplete }: MemoryGameProps) {
       </div>
 
       <AnimatePresence>
-        {showUnlock && (
-          <UnlockOverlay
-            key="unlock"
-            onComplete={onComplete}
-            prefersReducedMotion={prefersReducedMotion}
-          />
+        {showWin && (
+          <WinOverlay key="win" prefersReducedMotion={prefersReducedMotion} />
         )}
       </AnimatePresence>
     </motion.div>

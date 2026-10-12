@@ -14,7 +14,6 @@ export type GameSoundName = keyof typeof GAME_SOUND_SOURCES
 export const GAME_SOUND_OPTIONS: Array<{ value: GameSoundName; label: string }> =
   [
     { value: "game-sound", label: "Drum Ritual" },
-    { value: "game-sound2", label: "Loop" },
     { value: "game-sound3", label: "Retro" },
     { value: "game-sound4", label: "Static Loop" },
   ]

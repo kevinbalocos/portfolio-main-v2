@@ -1,9 +1,9 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { AnimatePresence } from "framer-motion"
+
 import IntroScreen from "@/components/IntroScreen"
-import PortalTransition from "@/components/PortalTransition"
 import MemoryGame from "@/components/MemoryGame"
 import WinTransition from "@/components/WinTransition"
 import Homepage from "@/PortfolioComponents/Homepage"
@@ -14,11 +14,9 @@ import {
   stopGameMusic,
   stopGlitchSound,
 } from "@/lib/audio"
-
-// adjust this import path to wherever your ThemeProvider exports useTheme
 import { useTheme } from "@/components/theme-provider"
 
-type Phase = "intro" | "portal" | "game" | "win" | "portfolio"
+type Phase = "intro" | "game" | "win" | "portfolio"
 
 const STORAGE_KEY = "portfolio-gate-complete"
 
@@ -42,32 +40,50 @@ export function App() {
   }, [])
 
   const resolvedTheme = theme === "system" ? systemTheme : theme
-
   const themeHint =
     resolvedTheme === "dark"
       ? 'Shift + D to turn on "light mode"'
       : 'Shift + D to turn on "dark mode"'
 
-  const resetGate = () => {
+  const resetGate = useCallback(() => {
     try {
-      localStorage.removeItem(STORAGE_KEY)
+      window.localStorage.removeItem(STORAGE_KEY)
     } catch {
-      // no-op
+      // Storage can be unavailable in private browsing or restricted contexts.
     }
 
     void stopAllAudio()
     setPhase("intro")
-  }
+  }, [])
+
+  const handleIntroComplete = useCallback(() => {
+    setPhase("game")
+  }, [])
+
+  const handleGameComplete = useCallback(() => {
+    setPhase("win")
+  }, [])
+
+  const handleWinComplete = useCallback(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, "true")
+    } catch {
+      // The portfolio still unlocks if storage is unavailable.
+    }
+
+    void stopAllAudio()
+    setPhase("portfolio")
+  }, [])
 
   useEffect(() => {
     preloadAudioAssets()
     initializeAudioUnlock()
 
     try {
-      const completed = localStorage.getItem(STORAGE_KEY) === "true"
+      const completed = window.localStorage.getItem(STORAGE_KEY) === "true"
       if (completed) setPhase("portfolio")
     } catch {
-      // no-op
+      // If storage is unavailable, start from the intro and memory game.
     }
 
     setMounted(true)
@@ -104,37 +120,21 @@ export function App() {
 
   return (
     <>
-      <div className="pointer-events-none fixed left-4 bottom-4 z-[70] max-w-[calc(100vw-2rem)] rounded-full border border-border/70 bg-background/80 px-3 py-2 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase shadow-[0_16px_50px_-30px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+      <div className="pointer-events-none fixed bottom-4 left-4 z-[70] max-w-[calc(100vw-2rem)] rounded-full border border-border/70 bg-background/80 px-3 py-2 font-mono text-[10px] tracking-[0.22em] text-muted-foreground uppercase shadow-[0_16px_50px_-30px_rgba(0,0,0,0.55)] backdrop-blur-xl">
         {themeHint}
       </div>
 
       <AnimatePresence mode="wait">
         {phase === "intro" && (
-          <IntroScreen key="intro" onComplete={() => setPhase("portal")} />
-        )}
-
-        {phase === "portal" && (
-          <PortalTransition key="portal" onComplete={() => setPhase("game")} />
+          <IntroScreen key="intro" onComplete={handleIntroComplete} />
         )}
 
         {phase === "game" && (
-          <MemoryGame key="game" onComplete={() => setPhase("win")} />
+          <MemoryGame key="game" onComplete={handleGameComplete} />
         )}
 
         {phase === "win" && (
-          <WinTransition
-            key="win"
-            onComplete={() => {
-              try {
-                localStorage.setItem(STORAGE_KEY, "true")
-              } catch {
-                // no-op
-              }
-
-              void stopAllAudio()
-              setPhase("portfolio")
-            }}
-          />
+          <WinTransition key="win" onComplete={handleWinComplete} />
         )}
 
         {phase === "portfolio" && (

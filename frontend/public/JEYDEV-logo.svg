@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 220" role="img" aria-labelledby="title desc">
+  <title id="title">JEYDEV logo</title>
+  <desc id="desc">Minimal modern JEYDEV wordmark with individually addressable letters for animation.</desc>
+
+  <g id="jeydev" fill="currentColor"
+     font-family="Inter, Arial, Helvetica, sans-serif"
+     font-size="150"
+     font-weight="800"
+     letter-spacing="-8">
+    <text id="J" x="55"  y="158">J</text>
+    <text id="E" x="170" y="158">E</text>
+    <text id="Y" x="275" y="158">Y</text>
+    <text id="D" x="410" y="158">D</text>
+    <text id="E2" x="525" y="158">E</text>
+    <text id="V" x="630" y="158">V</text>
+  </g>
+
+  <g id="accent" fill="currentColor">
+    <circle id="dot" cx="800" cy="55" r="9"/>
+  </g>
+</svg>
