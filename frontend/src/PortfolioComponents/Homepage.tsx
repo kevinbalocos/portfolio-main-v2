@@ -663,6 +663,15 @@ function StatementSection() {
   )
 }
 
+/*
+ * Replace the existing function ContactSection() in your Homepage file
+ * with this complete function. It uses imports already present in your
+ * original Homepage file: React state/event types, AnimatePresence, motion,
+ * and the lucide-react icons AlertCircle, CheckCircle, Clock, Globe, Mail,
+ * MapPin, MessageSquare, Send, and User.
+ *
+ * It also uses the API_BASE constant shown in README.md.
+ */
 function ContactSection() {
   const [form, setForm] = useState({
     name: "",
@@ -698,54 +707,84 @@ function ContactSection() {
   const handleChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
-    setForm((s) => ({ ...s, [e.target.name]: e.target.value }))
-  }
-
-  const sendMailFallback = () => {
-    const mailto = `mailto:kevinbalocos@gmail.com?subject=${encodeURIComponent(
-      form.subject || "Portfolio Contact"
-    )}&body=${encodeURIComponent(
-      `Name: ${form.name}\nEmail: ${form.email}\n\n${form.message}`
-    )}`
-    window.location.href = mailto
+    setForm((current) => ({ ...current, [e.target.name]: e.target.value }))
   }
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (!form.email || !form.message) {
+    if (status.loading) return
+
+    const name = form.name.trim()
+    const email = form.email.trim()
+    const subject = form.subject.trim()
+    const message = form.message.trim()
+
+    if (!email || !message) {
       setStatus({
         loading: false,
-        msg: "Please add your email and message.",
+        msg: "Please enter your email address and message.",
         error: true,
       })
       return
     }
-    setStatus({ loading: true, msg: null, error: false })
-    try {
-      const url = API_BASE
-        ? `${API_BASE}/api/send-contact`
-        : "/api/send-contact"
-      const resp = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      })
-      const body = await resp.json().catch(() => ({}))
-      if (!resp.ok) throw new Error(body?.message || "Failed to send")
+
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
       setStatus({
         loading: false,
-        msg: body?.message || "Message sent.",
+        msg: "Please enter a valid email address.",
+        error: true,
+      })
+      return
+    }
+
+    setStatus({ loading: true, msg: "Sending your message…", error: false })
+
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), 20000)
+
+    try {
+      const base = API_BASE.replace(/\/$/, "")
+      const url = base ? `${base}/api/send-contact` : "/api/send-contact"
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, subject, message }),
+        signal: controller.signal,
+      })
+
+      const body = (await response.json().catch(() => null)) as {
+        ok?: boolean
+        message?: string
+      } | null
+
+      if (!response.ok || body?.ok === false) {
+        throw new Error(
+          body?.message ||
+            `The server could not send your message (HTTP ${response.status}).`
+        )
+      }
+
+      setStatus({
+        loading: false,
+        msg:
+          body?.message ||
+          "Message sent successfully. Thank you for reaching out.",
         error: false,
       })
       setForm({ name: "", email: "", subject: "", message: "" })
-    } catch (err) {
-      console.error(err)
-      setStatus({
-        loading: false,
-        msg: "Message could not be sent right now. Your mail app will open instead.",
-        error: true,
-      })
-      setTimeout(sendMailFallback, 1000)
+    } catch (error) {
+      console.error("Portfolio contact submission failed:", error)
+      let msg = "We couldn't reach the contact service. Please try again later."
+      if (error instanceof Error) {
+        if (error.name === "AbortError") {
+          msg = "The request timed out. Please try again in a moment."
+        } else if (error.message && error.message !== "Failed to fetch") {
+          msg = error.message
+        }
+      }
+      setStatus({ loading: false, msg, error: true })
+    } finally {
+      window.clearTimeout(timeout)
     }
   }
 
@@ -858,21 +897,21 @@ function ContactSection() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="space-y-2">
                   <span className={labelClasses}>
-                    <User className="h-3 w-3" />
-                    Name
+                    <User className="h-3 w-3" /> Name
                   </span>
                   <input
                     name="name"
                     value={form.name}
                     onChange={handleChange}
                     placeholder="Your name"
+                    autoComplete="name"
+                    maxLength={100}
                     className={inputBaseClasses}
                   />
                 </label>
                 <label className="space-y-2">
                   <span className={labelClasses}>
-                    <Mail className="h-3 w-3" />
-                    Email *
+                    <Mail className="h-3 w-3" /> Email *
                   </span>
                   <input
                     name="email"
@@ -880,6 +919,8 @@ function ContactSection() {
                     value={form.email}
                     onChange={handleChange}
                     placeholder="your@email.com"
+                    autoComplete="email"
+                    maxLength={254}
                     className={inputBaseClasses}
                     required
                   />
@@ -888,28 +929,28 @@ function ContactSection() {
 
               <label className="block space-y-2">
                 <span className={labelClasses}>
-                  <MessageSquare className="h-3 w-3" />
-                  Subject
+                  <MessageSquare className="h-3 w-3" /> Subject
                 </span>
                 <input
                   name="subject"
                   value={form.subject}
                   onChange={handleChange}
                   placeholder="Subject"
+                  maxLength={160}
                   className={inputBaseClasses}
                 />
               </label>
 
               <label className="block space-y-2">
                 <span className={labelClasses}>
-                  <MessageSquare className="h-3 w-3" />
-                  Message *
+                  <MessageSquare className="h-3 w-3" /> Message *
                 </span>
                 <textarea
                   name="message"
                   value={form.message}
                   onChange={handleChange}
                   rows={7}
+                  maxLength={8000}
                   placeholder="Tell me about the project..."
                   className={`${inputBaseClasses} resize-none`}
                   required
@@ -919,6 +960,8 @@ function ContactSection() {
               <AnimatePresence>
                 {status.msg && (
                   <motion.div
+                    role="status"
+                    aria-live="polite"
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -6 }}
@@ -930,6 +973,8 @@ function ContactSection() {
                   >
                     {status.error ? (
                       <AlertCircle className="h-4 w-4 shrink-0" />
+                    ) : status.loading ? (
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
                     ) : (
                       <CheckCircle className="h-4 w-4 shrink-0" />
                     )}
@@ -947,8 +992,7 @@ function ContactSection() {
               >
                 {status.loading ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Sending...
+                    <Loader2 className="h-4 w-4 animate-spin" /> Sending...
                   </>
                 ) : (
                   <>
