@@ -1,7 +1,12 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import type { ChangeEvent, FormEvent, MouseEvent, ReactNode } from "react"
+import type {
+  ChangeEvent,
+  FormEvent,
+  MouseEvent as ReactMouseEvent,
+  ReactNode,
+} from "react"
 import {
   AnimatePresence,
   motion,
@@ -10,6 +15,7 @@ import {
   useTransform,
   useMotionValue,
   useInView,
+  useReducedMotion,
 } from "framer-motion"
 import { useTheme } from "@/components/theme-provider"
 import {
@@ -30,6 +36,7 @@ import {
   Layers3,
   LayoutGrid,
   Loader2,
+  Lock,
   Mail,
   MapPin,
   MessageSquare,
@@ -76,9 +83,54 @@ const stackItems = [
   { label: "MongoDB", Icon: Layers },
 ]
 
-const projects = [
+/* ================================================================== */
+/*  Projects                                                           */
+/* ================================================================== */
+
+type Project = {
+  id: string
+  title: string
+  category: string
+  year: string
+  description: string
+  stack: string[]
+  result: string
+  accent: string
+  /** Live website. Shows a live preview + "Visit live site" button. */
+  url?: string
+  /** Optional screenshot for private projects (import it or use a /public path). */
+  image?: string
+  /** Set false if a site blocks iframes. Falls back to `image` if you have one. */
+  embed?: boolean
+}
+
+const projects: Project[] = [
   {
     id: "01",
+    title: "Morrow Café Website",
+    category: "Business Website",
+    year: "2026",
+    description:
+      "A café website built around a slow-coffee identity, with a calm layout, clear menu browsing, and a mobile-friendly experience.",
+    stack: ["React", "Tailwind CSS", "UI/UX", "Vercel"],
+    result: "Live on Vercel",
+    accent: "oklch(0.7 0.1 65)",
+    url: "https://morrow-cafe-one.vercel.app/",
+  },
+  {
+    id: "02",
+    title: "CALALO Fireworks",
+    category: "Business Website",
+    year: "2026",
+    description:
+      "A fireworks collection site with a dark, dramatic look that makes products easy to browse and celebrations easy to plan.",
+    stack: ["React", "Tailwind CSS", "UI/UX", "Vercel"],
+    result: "Live on Vercel",
+    accent: "oklch(0.7 0.16 45)",
+    url: "https://calalo-fireworks.vercel.app/",
+  },
+  {
+    id: "03",
     title: "Paperless CRM Platform",
     category: "Business System",
     year: "2025",
@@ -89,7 +141,7 @@ const projects = [
     accent: "var(--primary)",
   },
   {
-    id: "02",
+    id: "04",
     title: "Records Management App",
     category: "Document System",
     year: "2025",
@@ -100,7 +152,7 @@ const projects = [
     accent: "oklch(0.7 0.12 220)",
   },
   {
-    id: "03",
+    id: "05",
     title: "Everlasting Roofing Website",
     category: "Business Website",
     year: "2024",
@@ -109,9 +161,10 @@ const projects = [
     stack: ["React", "Tailwind CSS", "UI/UX", "Git"],
     result: "Responsive product showcase",
     accent: "oklch(0.68 0.12 12)",
+    // url: "https://your-roofing-site.com",
   },
   {
-    id: "04",
+    id: "06",
     title: "Portfolio System Redesign",
     category: "Personal Brand",
     year: "2025",
@@ -122,7 +175,7 @@ const projects = [
     accent: "var(--primary)",
   },
   {
-    id: "05",
+    id: "07",
     title: "Interactive 3D Experiments",
     category: "Creative Frontend",
     year: "2025",
@@ -133,6 +186,575 @@ const projects = [
     accent: "oklch(0.58 0.05 252)",
   },
 ]
+
+/* ================================================================== */
+/*  Jade private-project preview                                       */
+/* ================================================================== */
+
+/* Letterforms: JEYD in Bodoni Moda (SIL OFL 1.1), same outlines as the intro.
+   Glyph space: baseline y = 0, cap height = -150. */
+const JADE_GLYPHS = [
+  {
+    char: "J",
+    d: "M94 -150V-149.6H74V-34Q71.7 -27.6 68.3 -20.6Q65 -13.6 60.1 -7.6Q55.2 -1.5 48.3 2.3Q41.5 6.1 32.1 6.1Q22.9 6.1 16 2.7Q9.2 -0.7 5.4 -6.3Q1.6 -11.8 1.6 -18.3Q1.6 -23.4 3.7 -27.1Q5.8 -30.8 9.3 -32.8Q12.8 -34.8 16.9 -34.8Q20.4 -34.8 23.9 -33.1Q27.4 -31.4 29.8 -28Q32.1 -24.6 32.1 -19.6Q32.1 -14.9 30 -11.7Q27.8 -8.5 24.4 -6.8Q20.9 -5.2 16.9 -5.2Q12.3 -5.2 8 -8Q3.6 -10.9 2.3 -15.2Q3.2 -9.4 7.1 -4.7Q11 -0 16.9 2.6Q22.9 5.3 30 5.3Q37.5 5.3 41.3 0.3Q45.2 -4.7 46.5 -14.4Q47.9 -24.1 47.9 -38V-149.6H21.9V-150Z",
+  },
+  {
+    char: "E",
+    d: "M110.5 0V-0.4H128.4V-149.6H110.5V-150H220.8V-109H220.5Q219.6 -119.7 215 -129Q210.3 -138.2 202.1 -143.9Q193.8 -149.6 182.1 -149.6H154.7V-0.4H180.1Q193.8 -0.4 202.9 -6.3Q211.9 -12.1 216.8 -22.2Q221.6 -32.3 222.5 -45H222.9V0ZM188.3 -53.8Q187.4 -60.5 183.7 -65.8Q180 -71.2 174.7 -74.3Q169.4 -77.4 163.7 -77.4H146.4V-77.8H163.7Q169.4 -77.8 174.7 -80.6Q180 -83.5 183.7 -88.6Q187.4 -93.7 188.3 -100.4H188.7V-53.8Z",
+  },
+  {
+    char: "Y",
+    d: "M281.3 0V-0.4H299.3V-72L253.7 -149.6H240.2V-150H305.4V-149.6H284.1L325.1 -76.9L362.1 -149.6H338.8V-150H380.8V-149.6H362.7L325.5 -76.6V-0.4H345.6V0Z",
+  },
+  {
+    char: "D",
+    d: "M456.4 -150Q479.6 -150 496.3 -140.4Q512.9 -130.8 521.9 -113.8Q530.9 -96.9 530.9 -75Q530.9 -58.6 525.5 -44.8Q520.1 -31.1 510.3 -21.1Q500.4 -11 486.7 -5.5Q473.1 0 456.4 0H395.7V-0.4H413.6V-149.6H395.7V-150ZM439.9 -0.4H456.4Q468.9 -0.4 477.4 -6.6Q485.8 -12.8 491 -23.4Q496.1 -33.9 498.4 -47.3Q500.6 -60.7 500.6 -75Q500.6 -89.4 498.1 -102.7Q495.5 -116.1 490.2 -126.6Q484.9 -137.2 476.5 -143.4Q468.2 -149.6 456.4 -149.6H439.9Z",
+  },
+]
+
+// Typed as mutable 4-tuples: framer-motion's `Easing` type rejects the
+// readonly tuples that `as const` produces.
+type Bezier = [number, number, number, number]
+const JADE_EASE: Bezier = [0.22, 1, 0.36, 1]
+const JADE_DRAG: Bezier = [0.65, 0, 0.35, 1]
+const JADE_INK = { x0: 1.6, y0: -150, x1: 530.9, y1: 6.1 }
+const JADE_PAD = 14
+const JADE_BOX = {
+  x0: JADE_INK.x0 - JADE_PAD,
+  y0: JADE_INK.y0 - JADE_PAD,
+  x1: JADE_INK.x1 + JADE_PAD,
+  y1: JADE_INK.y1 + JADE_PAD,
+}
+const JADE_BOX_W = JADE_BOX.x1 - JADE_BOX.x0
+const JADE_BOX_H = JADE_BOX.y1 - JADE_BOX.y0
+const JADE_VB = {
+  x: JADE_BOX.x0 - 30,
+  y: JADE_BOX.y0 - 24,
+  w: JADE_BOX_W + 60,
+  h: JADE_BOX_H + 24 + 58,
+}
+const JADE_SIZE_LABEL = `${Math.round(JADE_INK.x1 - JADE_INK.x0)} × ${Math.round(
+  JADE_INK.y1 - JADE_INK.y0
+)}`
+
+/** Private-project preview: the intro's design canvas, drawn on scroll-in. */
+function JadePreview({ project }: { project: Project }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const inView = useInView(ref, { once: true, margin: "-8%" })
+  const reduce = useReducedMotion()
+  const shown = !!reduce || inView
+
+  const gid = `jade-grad-${project.id}`
+  const guideId = `jade-guide-${project.id}`
+  const B = JADE_BOX
+  const cx = (B.x0 + B.x1) / 2
+  const cy = (B.y0 + B.y1) / 2
+  const handles: Array<[number, number]> = [
+    [B.x0, B.y0],
+    [cx, B.y0],
+    [B.x1, B.y0],
+    [B.x0, cy],
+    [B.x1, cy],
+    [B.x0, B.y1],
+    [cx, B.y1],
+    [B.x1, B.y1],
+  ]
+  const entry = { x: B.x1 + 90, y: B.y1 + 80 }
+
+  return (
+    <div ref={ref} className="absolute inset-0 bg-background text-foreground">
+      <div
+        aria-hidden
+        className="absolute inset-0"
+        style={{
+          background: `radial-gradient(ellipse at 50% 46%, color-mix(in oklab, ${project.accent} 14%, transparent), transparent 62%)`,
+        }}
+      />
+      {/* design-tool canvas grid */}
+      <div
+        aria-hidden
+        className="absolute inset-0 opacity-[0.06]"
+        style={{
+          backgroundImage:
+            "linear-gradient(to right, currentColor 1px, transparent 1px), linear-gradient(to bottom, currentColor 1px, transparent 1px)",
+          backgroundSize: "28px 28px",
+          maskImage:
+            "radial-gradient(ellipse at center, black, transparent 78%)",
+          WebkitMaskImage:
+            "radial-gradient(ellipse at center, black, transparent 78%)",
+        }}
+      />
+
+      {/* corner labels, like the intro */}
+      <div className="pointer-events-none absolute top-3 left-4 flex items-center gap-1.5">
+        <span className="h-1 w-1 rounded-full bg-primary" />
+        <span className="font-mono text-[8px] tracking-[0.25em] text-foreground/55 uppercase">
+          Private build
+        </span>
+      </div>
+      <div className="pointer-events-none absolute top-3 right-4 font-mono text-[8px] tracking-[0.22em] text-muted-foreground/50">
+        {project.year.slice(2)} / {project.id}
+      </div>
+      <div className="pointer-events-none absolute right-4 bottom-3 left-4 truncate font-mono text-[8px] tracking-[0.2em] text-muted-foreground/55 uppercase">
+        {project.title}
+      </div>
+
+      <div className="absolute inset-0 flex items-center justify-center px-[8%]">
+        <svg
+          viewBox={`${JADE_VB.x} ${JADE_VB.y} ${JADE_VB.w} ${JADE_VB.h}`}
+          className="block h-auto w-full overflow-visible"
+          role="img"
+          aria-label={`${project.title}, private build`}
+        >
+          <defs>
+            <linearGradient
+              id={gid}
+              gradientUnits="userSpaceOnUse"
+              x1={JADE_INK.x0}
+              y1="0"
+              x2={JADE_INK.x1}
+              y2="0"
+            >
+              <stop offset="0%" stopColor="currentColor" />
+              <stop offset="56%" stopColor="currentColor" />
+              <stop offset="100%" stopColor="var(--primary)" />
+            </linearGradient>
+            <linearGradient
+              id={guideId}
+              gradientUnits="userSpaceOnUse"
+              x1={JADE_VB.x - 700}
+              y1="0"
+              x2={JADE_VB.x + JADE_VB.w + 700}
+              y2="0"
+            >
+              <stop offset="0%" stopColor="var(--primary)" stopOpacity="0" />
+              <stop
+                offset="50%"
+                stopColor="var(--primary)"
+                stopOpacity="0.55"
+              />
+              <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+
+          {/* cap-height + baseline guides */}
+          {[-150, 0].map((y, i) => (
+            <motion.line
+              key={y}
+              x1={JADE_VB.x - 700}
+              x2={JADE_VB.x + JADE_VB.w + 700}
+              y1={y}
+              y2={y}
+              stroke={`url(#${guideId})`}
+              strokeWidth={1.2}
+              initial={reduce ? false : { pathLength: 0 }}
+              animate={{ pathLength: shown ? 1 : 0 }}
+              transition={{
+                duration: 0.9,
+                delay: 0.05 + i * 0.08,
+                ease: JADE_EASE,
+              }}
+            />
+          ))}
+
+          {/* letterforms */}
+          {JADE_GLYPHS.map((g, i) => (
+            <motion.path
+              key={g.char}
+              d={g.d}
+              fill={`url(#${gid})`}
+              initial={reduce ? false : { opacity: 0, y: 10 }}
+              animate={shown ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }}
+              transition={{
+                duration: 0.6,
+                delay: 0.25 + i * 0.1,
+                ease: JADE_EASE,
+              }}
+            />
+          ))}
+
+          {/* selection box, dragged out */}
+          <motion.rect
+            x={B.x0}
+            y={B.y0}
+            fill="var(--primary)"
+            fillOpacity={0.06}
+            stroke="var(--primary)"
+            strokeWidth={1.4}
+            initial={reduce ? false : { width: 0, height: 0 }}
+            animate={
+              shown
+                ? { width: JADE_BOX_W, height: JADE_BOX_H }
+                : { width: 0, height: 0 }
+            }
+            transition={{ duration: 0.6, delay: 0.95, ease: JADE_DRAG }}
+          />
+
+          {handles.map(([hx, hy], i) => (
+            <motion.rect
+              key={i}
+              x={hx - 4}
+              y={hy - 4}
+              width={8}
+              height={8}
+              fill="var(--background)"
+              stroke="var(--primary)"
+              strokeWidth={1.4}
+              style={{ transformBox: "fill-box", transformOrigin: "50% 50%" }}
+              initial={reduce ? false : { scale: 0 }}
+              animate={{ scale: shown ? 1 : 0 }}
+              transition={{
+                duration: 0.28,
+                delay: 1.55 + i * 0.025,
+                ease: JADE_EASE,
+              }}
+            />
+          ))}
+
+          {/* size pill */}
+          <g transform={`translate(${cx} ${B.y1 + 14})`}>
+            <motion.g
+              initial={reduce ? false : { opacity: 0, y: -4 }}
+              animate={shown ? { opacity: 1, y: 0 } : { opacity: 0, y: -4 }}
+              transition={{ duration: 0.35, delay: 1.65, ease: JADE_EASE }}
+            >
+              <rect
+                x={-46}
+                y={0}
+                width={92}
+                height={22}
+                rx={4.5}
+                fill="var(--primary)"
+              />
+              <text
+                x={0}
+                y={15}
+                textAnchor="middle"
+                fill="var(--primary-foreground)"
+                fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                fontSize={11}
+                letterSpacing={0.5}
+              >
+                {JADE_SIZE_LABEL}
+              </text>
+            </motion.g>
+          </g>
+
+          {/* the "Jade" cursor */}
+          <motion.g
+            initial={reduce ? false : { x: entry.x, y: entry.y, opacity: 0 }}
+            animate={
+              shown
+                ? {
+                    x: [entry.x, B.x0, B.x1],
+                    y: [entry.y, B.y0, B.y1],
+                    opacity: [0, 1, 1],
+                  }
+                : { x: entry.x, y: entry.y, opacity: 0 }
+            }
+            transition={{
+              x: {
+                duration: 0.95,
+                delay: 0.6,
+                times: [0, 0.37, 1],
+                ease: [JADE_EASE, JADE_DRAG],
+              },
+              y: {
+                duration: 0.95,
+                delay: 0.6,
+                times: [0, 0.37, 1],
+                ease: [JADE_EASE, JADE_DRAG],
+              },
+              opacity: { duration: 0.95, delay: 0.6, times: [0, 0.12, 1] },
+            }}
+          >
+            <g transform="scale(1.5)">
+              <path
+                d="M0 0 L0 16 L4.2 12.2 L7 18.5 L9.4 17.4 L6.6 11.2 L12 11.2 Z"
+                fill="var(--primary)"
+                stroke="var(--background)"
+                strokeWidth={1.2}
+                strokeLinejoin="round"
+              />
+            </g>
+            <rect
+              x={17}
+              y={23}
+              width={50}
+              height={20}
+              rx={5}
+              fill="var(--primary)"
+            />
+            <text
+              x={42}
+              y={37}
+              textAnchor="middle"
+              fill="var(--primary-foreground)"
+              fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+              fontSize={11.5}
+              letterSpacing={0.4}
+            >
+              Jade
+            </text>
+          </motion.g>
+        </svg>
+      </div>
+    </div>
+  )
+}
+
+/** Mini browser window. Live = real iframe. Private = Jade design-canvas preview. */
+function SitePreview({ project }: { project: Project }) {
+  const wrap = useRef<HTMLDivElement>(null)
+  const inView = useInView(wrap, { once: true, margin: "300px" })
+  const [scale, setScale] = useState(0.4)
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    const el = wrap.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) =>
+      setScale(entry.contentRect.width / 1280)
+    )
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const isLive = !!project.url
+  const host = project.url
+    ? project.url.replace(/^https?:\/\//, "").replace(/\/$/, "")
+    : ""
+  const showFrame = isLive && project.embed !== false
+
+  const overlayClasses =
+    "absolute inset-0 flex items-center justify-center bg-background/0 opacity-0 transition-all duration-300 group-hover:bg-background/40 group-hover:opacity-100 focus-visible:bg-background/40 focus-visible:opacity-100"
+  const overlayPill =
+    "inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-xl"
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border/40 bg-background/60 shadow-[0_30px_60px_-35px_rgba(0,0,0,0.55)]">
+      {/* browser bar */}
+      <div className="flex items-center gap-2.5 border-b border-border/35 bg-card/60 px-3 py-2">
+        <div className="hidden gap-1.5 sm:flex">
+          {[0, 1, 2].map((i) => (
+            <span key={i} className="h-2 w-2 rounded-full bg-foreground/15" />
+          ))}
+        </div>
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-full border border-border/40 bg-background/60 px-3 py-1">
+          {isLive ? (
+            <Globe className="h-3 w-3 shrink-0 text-muted-foreground/50" />
+          ) : (
+            <Lock className="h-3 w-3 shrink-0 text-muted-foreground/50" />
+          )}
+          <span className="truncate font-mono text-[10px] text-muted-foreground/60">
+            {host || "private build"}
+          </span>
+        </div>
+        {isLive ? (
+          <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-0.5 font-mono text-[9px] tracking-[0.18em] text-emerald-500 uppercase dark:text-emerald-300">
+            <motion.span
+              className="h-1.5 w-1.5 rounded-full bg-emerald-400"
+              animate={{ opacity: [0.4, 1, 0.4], scale: [0.9, 1.2, 0.9] }}
+              transition={{ duration: 1.8, repeat: Infinity }}
+            />
+            Live
+          </span>
+        ) : (
+          <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-0.5 font-mono text-[9px] tracking-[0.18em] text-primary/80 uppercase">
+            <Lock className="h-2.5 w-2.5" />
+            Private
+          </span>
+        )}
+      </div>
+
+      {/* viewport */}
+      <div
+        ref={wrap}
+        className="relative aspect-[16/10] overflow-hidden bg-muted/30"
+      >
+        {!loaded && showFrame && (
+          <div
+            aria-hidden
+            className="absolute inset-0 animate-pulse"
+            style={{
+              background: `linear-gradient(135deg, color-mix(in oklab, ${project.accent} 14%, transparent), transparent 70%)`,
+            }}
+          />
+        )}
+
+        {/* no live site and no screenshot -> Jade design-canvas preview */}
+        {!project.image && !showFrame && <JadePreview project={project} />}
+
+        {project.image && (
+          <img
+            src={project.image}
+            alt={`${project.title} preview`}
+            loading="lazy"
+            className="absolute inset-0 h-full w-full object-cover object-top"
+          />
+        )}
+
+        {showFrame && inView && (
+          <iframe
+            src={project.url}
+            title={`${project.title} live preview`}
+            loading="lazy"
+            tabIndex={-1}
+            aria-hidden
+            sandbox="allow-scripts allow-same-origin"
+            referrerPolicy="no-referrer"
+            onLoad={() => setLoaded(true)}
+            className={`pointer-events-none absolute top-0 left-0 border-0 bg-background transition-opacity duration-700 ${
+              loaded ? "opacity-100" : "opacity-0"
+            }`}
+            style={{
+              width: 1280,
+              height: 800,
+              transform: `scale(${scale})`,
+              transformOrigin: "top left",
+            }}
+          />
+        )}
+
+        {/* hover: live -> open the real site, private -> jump to contact */}
+        {isLive ? (
+          <a
+            href={project.url}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={`Visit ${project.title} live site`}
+            className={overlayClasses}
+          >
+            <span className={overlayPill}>
+              Visit live site <ArrowUpRight className="h-4 w-4" />
+            </span>
+          </a>
+        ) : (
+          <a
+            href="#contact"
+            aria-label={`Ask for a private walkthrough of ${project.title}`}
+            className={overlayClasses}
+          >
+            <span className={overlayPill}>
+              <Lock className="h-4 w-4" /> Ask for a walkthrough
+            </span>
+          </a>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ProjectCard({
+  project,
+  active,
+  onHover,
+}: {
+  project: Project
+  active: boolean
+  onHover: () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const mouseX = useMotionValue(0)
+  const mouseY = useMotionValue(0)
+
+  const handleMouseMove = (e: ReactMouseEvent<HTMLDivElement>) => {
+    const rect = ref.current?.getBoundingClientRect()
+    if (!rect) return
+    mouseX.set(e.clientX - rect.left)
+    mouseY.set(e.clientY - rect.top)
+  }
+
+  const secondaryButtonClasses =
+    "mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full border border-border/45 bg-background/55 px-6 py-3 text-sm font-medium text-foreground/75 transition-all hover:border-primary/30 hover:bg-primary/[0.07] hover:text-primary sm:w-auto"
+
+  return (
+    <motion.div
+      ref={ref}
+      onMouseMove={handleMouseMove}
+      onMouseEnter={onHover}
+      className="group relative cursor-pointer overflow-hidden rounded-[2.2rem] border border-border/35 bg-card/30 backdrop-blur-sm transition-all duration-500 hover:border-border/60 hover:bg-card/50"
+      whileHover={{ y: -3 }}
+      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+    >
+      <motion.div
+        className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+        style={{
+          background: `radial-gradient(280px circle at ${mouseX}px ${mouseY}px, color-mix(in oklab, ${project.accent} 10%, transparent), transparent 70%)`,
+        }}
+      />
+
+      <div className="relative grid gap-7 p-7 sm:p-8 lg:grid-cols-[1.15fr_1fr] lg:items-center">
+        <SitePreview project={project} />
+
+        <div>
+          <div className="flex items-start justify-between gap-6">
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-[11px] tracking-[0.28em] text-muted-foreground/30">
+                {project.id}
+              </span>
+              <span className="h-px w-6 bg-border/40" />
+              <span className="rounded-full border border-border/40 bg-background/50 px-3 py-1 font-mono text-[9px] tracking-[0.2em] text-muted-foreground/55 uppercase">
+                {project.category}
+              </span>
+              <span className="hidden font-mono text-[9px] tracking-[0.2em] text-muted-foreground/30 sm:block">
+                {project.year}
+              </span>
+            </div>
+            <motion.div
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/40 bg-background/50 text-muted-foreground/50 transition-all duration-300 group-hover:border-primary/30 group-hover:bg-primary/8 group-hover:text-primary"
+              animate={{ rotate: active ? 45 : 0 }}
+              transition={{ duration: 0.25 }}
+            >
+              <ArrowUpRight className="h-4 w-4" />
+            </motion.div>
+          </div>
+
+          <h3 className="mt-5 text-[clamp(1.3rem,3vw,1.75rem)] leading-tight font-semibold tracking-[-0.04em] text-foreground">
+            {project.title}
+          </h3>
+          <p className="mt-3 max-w-2xl text-[14px] leading-[1.7] text-muted-foreground/65">
+            {project.description}
+          </p>
+
+          <div className="mt-6 flex flex-wrap gap-2">
+            {project.stack.slice(0, 4).map((item) => (
+              <Chip key={item}>{item}</Chip>
+            ))}
+            {project.stack.length > 4 && (
+              <Chip>+{project.stack.length - 4}</Chip>
+            )}
+          </div>
+
+          <div className="mt-7 flex items-center justify-between border-t border-border/30 pt-5">
+            <p className="font-mono text-[9px] tracking-[0.26em] text-muted-foreground/40 uppercase">
+              Outcome
+            </p>
+            <p className="text-sm font-medium text-foreground/70">
+              {project.result}
+            </p>
+          </div>
+
+          {project.url ? (
+            <a
+              href={project.url}
+              target="_blank"
+              rel="noreferrer"
+              className={secondaryButtonClasses}
+            >
+              Visit live site <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          ) : (
+            <a href="#contact" className={secondaryButtonClasses}>
+              <Lock className="h-3.5 w-3.5" /> Private build · ask for a
+              walkthrough
+            </a>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  )
+}
 
 const experience = [
   {
@@ -197,20 +819,23 @@ const principles = [
   },
 ]
 
-function useCursorAura() {
-  const [pos, setPos] = useState({ x: -200, y: -200 })
-  useEffect(() => {
-    const move = (e: MouseEvent) => setPos({ x: e.clientX, y: e.clientY })
-    window.addEventListener("mousemove", move, { passive: true })
-    return () => window.removeEventListener("mousemove", move)
-  }, [])
-  return pos
-}
-
 function CursorAura() {
-  const { x, y } = useCursorAura()
+  // Motion values are updated directly, so the spring actually follows the
+  // cursor (useSpring does not track a plain number that changes).
+  const x = useMotionValue(-200)
+  const y = useMotionValue(-200)
   const springX = useSpring(x, { stiffness: 80, damping: 28 })
   const springY = useSpring(y, { stiffness: 80, damping: 28 })
+
+  useEffect(() => {
+    const move = (e: MouseEvent) => {
+      x.set(e.clientX)
+      y.set(e.clientY)
+    }
+    window.addEventListener("mousemove", move, { passive: true })
+    return () => window.removeEventListener("mousemove", move)
+  }, [x, y])
+
   return (
     <motion.div
       aria-hidden
@@ -273,42 +898,6 @@ function Marquee() {
   )
 }
 
-function MetricCard({
-  value,
-  label,
-  sublabel,
-}: {
-  value: string
-  label: string
-  sublabel?: string
-}) {
-  const ref = useRef<HTMLDivElement>(null)
-  const inView = useInView(ref, { once: true })
-  return (
-    <motion.div
-      ref={ref}
-      initial={{ opacity: 0, y: 16 }}
-      animate={inView ? { opacity: 1, y: 0 } : {}}
-      transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      className="group relative overflow-hidden rounded-[1.6rem] border border-border/40 bg-card/40 p-5 backdrop-blur-sm transition-all duration-500 hover:border-primary/25 hover:bg-card/60"
-    >
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.02] to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-      <p className="font-mono text-[2rem] leading-none font-semibold tracking-[-0.06em] text-foreground">
-        {value}
-      </p>
-      <p className="mt-2 font-mono text-[9px] tracking-[0.26em] text-muted-foreground/50 uppercase">
-        {label}
-      </p>
-      {sublabel && (
-        <p className="mt-2.5 text-xs leading-5 text-muted-foreground/60">
-          {sublabel}
-        </p>
-      )}
-    </motion.div>
-  )
-}
-
 function SectionTitle({
   eyebrow,
   title,
@@ -340,92 +929,6 @@ function Chip({ children }: { children: ReactNode }) {
     <span className="inline-flex items-center rounded-full border border-border/40 bg-background/50 px-3 py-1 font-mono text-[9px] tracking-[0.18em] text-muted-foreground/60 uppercase">
       {children}
     </span>
-  )
-}
-
-function ProjectCard({
-  project,
-  active,
-  onHover,
-}: {
-  project: (typeof projects)[0]
-  active: boolean
-  onHover: () => void
-}) {
-  const ref = useRef<HTMLDivElement>(null)
-  const mouseX = useMotionValue(0)
-  const mouseY = useMotionValue(0)
-
-  const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
-    const rect = ref.current?.getBoundingClientRect()
-    if (!rect) return
-    mouseX.set(e.clientX - rect.left)
-    mouseY.set(e.clientY - rect.top)
-  }
-
-  return (
-    <motion.div
-      ref={ref}
-      onMouseMove={handleMouseMove}
-      onMouseEnter={onHover}
-      className="group relative cursor-pointer overflow-hidden rounded-[2.2rem] border border-border/35 bg-card/30 backdrop-blur-sm transition-all duration-500 hover:border-border/60 hover:bg-card/50"
-      whileHover={{ y: -3 }}
-      transition={{ type: "spring", stiffness: 300, damping: 30 }}
-    >
-      <motion.div
-        className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-        style={{
-          background: `radial-gradient(280px circle at ${mouseX}px ${mouseY}px, color-mix(in oklab, ${project.accent} 10%, transparent), transparent 70%)`,
-        }}
-      />
-
-      <div className="relative p-7 sm:p-8">
-        <div className="flex items-start justify-between gap-6">
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-[11px] tracking-[0.28em] text-muted-foreground/30">
-              {project.id}
-            </span>
-            <span className="h-px w-6 bg-border/40" />
-            <span className="rounded-full border border-border/40 bg-background/50 px-3 py-1 font-mono text-[9px] tracking-[0.2em] text-muted-foreground/55 uppercase">
-              {project.category}
-            </span>
-            <span className="hidden font-mono text-[9px] tracking-[0.2em] text-muted-foreground/30 sm:block">
-              {project.year}
-            </span>
-          </div>
-          <motion.div
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/40 bg-background/50 text-muted-foreground/50 transition-all duration-300 group-hover:border-primary/30 group-hover:bg-primary/8 group-hover:text-primary"
-            animate={{ rotate: active ? 45 : 0 }}
-            transition={{ duration: 0.25 }}
-          >
-            <ArrowUpRight className="h-4 w-4" />
-          </motion.div>
-        </div>
-
-        <h3 className="mt-5 text-[clamp(1.3rem,3vw,1.75rem)] leading-tight font-semibold tracking-[-0.04em] text-foreground">
-          {project.title}
-        </h3>
-        <p className="mt-3 max-w-2xl text-[14px] leading-[1.7] text-muted-foreground/65">
-          {project.description}
-        </p>
-
-        <div className="mt-6 flex flex-wrap gap-2">
-          {project.stack.slice(0, 4).map((item) => (
-            <Chip key={item}>{item}</Chip>
-          ))}
-          {project.stack.length > 4 && <Chip>+{project.stack.length - 4}</Chip>}
-        </div>
-
-        <div className="mt-7 flex items-center justify-between border-t border-border/30 pt-5">
-          <p className="font-mono text-[9px] tracking-[0.26em] text-muted-foreground/40 uppercase">
-            Outcome
-          </p>
-          <p className="text-sm font-medium text-foreground/70">
-            {project.result}
-          </p>
-        </div>
-      </div>
-    </motion.div>
   )
 }
 
@@ -666,15 +1169,6 @@ function StatementSection() {
   )
 }
 
-/*
- * Replace the existing function ContactSection() in your Homepage file
- * with this complete function. It uses imports already present in your
- * original Homepage file: React state/event types, AnimatePresence, motion,
- * and the lucide-react icons AlertCircle, CheckCircle, Clock, Globe, Mail,
- * MapPin, MessageSquare, Send, and User.
- *
- * It also uses the API_BASE constant shown in README.md.
- */
 function ContactSection() {
   const [form, setForm] = useState({
     name: "",
@@ -746,8 +1240,6 @@ function ContactSection() {
     const timeout = window.setTimeout(() => controller.abort(), 20000)
 
     try {
-      const base = API_BASE.replace(/\/$/, "")
-
       const url = API_BASE
         ? `${API_BASE}/api/send-contact`
         : "/api/send-contact"
