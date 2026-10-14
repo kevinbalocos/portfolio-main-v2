@@ -52,7 +52,10 @@ import kevsPicDark from "@/assets/KEVS-PIC-DARK.jpg?url"
 import liquidForm from "@/assets/LIQUID-FORM.png?url"
 import PortfolioSelectorFloating from "@/components/PortfolioSelectorFloating"
 
-const API_BASE = import.meta.env.VITE_API_BASE || ""
+const API_BASE =
+  import.meta.env.DEV && import.meta.env.VITE_API_BASE
+    ? import.meta.env.VITE_API_BASE.replace(/\/+$/, "")
+    : ""
 
 const stackItems = [
   { label: "React", Icon: Atom },
@@ -744,7 +747,11 @@ function ContactSection() {
 
     try {
       const base = API_BASE.replace(/\/$/, "")
-      const url = base ? `${base}/api/send-contact` : "/api/send-contact"
+
+      const url = API_BASE
+        ? `${API_BASE}/api/send-contact`
+        : "/api/send-contact"
+
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
