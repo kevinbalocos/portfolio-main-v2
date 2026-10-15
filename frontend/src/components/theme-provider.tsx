@@ -47,7 +47,7 @@ function getStoredTheme(storageKey: string, fallback: Theme): Theme {
     const stored = window.localStorage.getItem(storageKey)
     if (isTheme(stored)) return stored
   } catch {
-    // no-op
+    // Storage may be unavailable.
   }
 
   return fallback
@@ -67,15 +67,18 @@ function isEditableTarget(target: EventTarget | null) {
 
 function disableTransitionsTemporarily() {
   const style = document.createElement("style")
+
   style.appendChild(
     document.createTextNode(
       "*,*::before,*::after{-webkit-transition:none!important;transition:none!important}"
     )
   )
+
   document.head.appendChild(style)
 
   return () => {
     window.getComputedStyle(document.body)
+
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         style.remove()
@@ -86,7 +89,7 @@ function disableTransitionsTemporarily() {
 
 export function ThemeProvider({
   children,
-  defaultTheme = "dark",
+  defaultTheme = "light",
   storageKey = "theme",
   disableTransitionOnChange = true,
   ...props
@@ -107,6 +110,7 @@ export function ThemeProvider({
         : null
 
       const root = document.documentElement
+
       root.classList.remove("light", "dark")
       root.classList.add(resolvedTheme)
       root.style.colorScheme = resolvedTheme
@@ -118,12 +122,10 @@ export function ThemeProvider({
 
   const setTheme = React.useCallback(
     (nextTheme: Theme) => {
-      if (typeof window !== "undefined") {
-        try {
-          window.localStorage.setItem(storageKey, nextTheme)
-        } catch {
-          // no-op
-        }
+      try {
+        window.localStorage.setItem(storageKey, nextTheme)
+      } catch {
+        // Storage may be unavailable.
       }
 
       setThemeState(nextTheme)
@@ -165,7 +167,7 @@ export function ThemeProvider({
         try {
           window.localStorage.setItem(storageKey, nextTheme)
         } catch {
-          // no-op
+          // Storage may be unavailable.
         }
 
         return nextTheme
@@ -181,7 +183,7 @@ export function ThemeProvider({
 
   React.useEffect(() => {
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.storageArea !== localStorage) return
+      if (event.storageArea !== window.localStorage) return
       if (event.key !== storageKey) return
 
       if (isTheme(event.newValue)) {
